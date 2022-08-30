@@ -5,12 +5,12 @@ library(rpart)
 library(gam)
 library(tidyverse)
 
-make_data <- function(data, model_y, mediator_name, treat_name, pi_hat, m0_hat, m1_hat) {
+make_data <- function(data, model_y, mediator_name, treat_name) {
   X <- model.frame(model_y, data = data)
   X[[treat_name]] <- data[[treat_name]]
-  X[['pi_hat']] <- pi_hat
-  X[['m0_hat']] <- m0_hat
-  X[['m1_hat']] <- m1_hat
+  # X[['pi_hat']] <- pi_hat
+  # X[['m0_hat']] <- m0_hat
+  # X[['m1_hat']] <- m1_hat
   X_rep <- X %>% mutate(count = data[[mediator_name]]) %>% uncount(count)
   order <- 1:5
   m <- unlist(lapply(data[[mediator_name]], function(x) order[1:x]))
@@ -22,10 +22,10 @@ make_data <- function(data, model_y, mediator_name, treat_name, pi_hat, m0_hat, 
   return(X_final)
 }
 
-bart_mediate <- function(data, model_m, model_y, mediator_name, outcome_name, treat_name, n_iter, burnin){
+bart_mediate <- function(data, model_m, model_y, pi_hat, m0_hat, m1_hat, mediator_name, outcome_name, treat_name, n_iter, burnin){
   X_m <- quantile_normalize_bart(preprocess_df(model.frame(model_m, data = data) %>% select(-mediator_name))[[1]])
   X_y <- quantile_normalize_bart(preprocess_df(
-         cbind(model.frame(model_y, data = data) %>% select(-outcome_name), m0_hat = data$m0_hat, m1_hat = data$m1_hat))[[1]])
+         cbind(model.frame(model_y, data = data) %>% select(-outcome_name), m0_hat, m1_hat))[[1]])
   m <- data[[mediator_name]]
   Y <- data[[outcome_name]]
   Y_scale <- (Y - mean(Y)) / sd(Y)
@@ -33,14 +33,14 @@ bart_mediate <- function(data, model_m, model_y, mediator_name, outcome_name, tr
   
   # Hypers for mu_m and tau
   hypers_mu_m <- hypers_tau <- Hypers(X_m, m)
-  opts_mu_m <- Opts()
+  opts_mu_m <- Opts(update_s = FALSE)
   opts_tau <- opts_mu_m
   opts_mu_m$update_sigma <- FALSE
   opts_tau$update_sigma <- FALSE
   
   # Hypers for mu_y, zeta, d
   hypers_mu_y <- hypers_zeta <- hypers_d <- Hypers(X_y, Y_scale)
-  opts_mu_y <- Opts()
+  opts_mu_y <- Opts(update_s = FALSE)
   opts_zeta <- opts_d <- opts_mu_y
   opts_zeta$update_sigma <- FALSE
   opts_d$update_sigma <- FALSE
@@ -55,7 +55,7 @@ bart_mediate <- function(data, model_m, model_y, mediator_name, outcome_name, tr
   forest_d <- MakeForest(hypers_d, opts_d)
   
   # Initialize mu_m and tau
-  X_mu_m <- cbind(X_m, pi_hat = data$pi_hat)
+  X_mu_m <- cbind(X_m, pi_hat)
   mu_m <- forest_mu_m$do_predict(X_mu_m)
   tau <- forest_tau$do_predict(X_m)
   
@@ -134,33 +134,35 @@ projection_tree <- function(data, model, samples) {
 }
 
 # Model for m and y
-model_m <- phealth ~ -1 + age + race_white + inc + bmi + edu + povlev
-model_y <- logY ~ -1 + age + race_white + inc + bmi + edu + povlev + phealth
+model_m <- phealth ~ -1 + age + race_white + inc + bmi + edu + povlev + m
+model_y <- logY ~ -1 + age + race_white + inc + bmi + edu + povlev + phealth + m
 
 # Estimate clever covariates with BART
 data <- readRDS("Data/meps_logy.rds")
 data$smoke <- ifelse(data$smoke == 2, 0, 1)
-X_m <- quantile_normalize_bart(preprocess_df(model.frame(model_m, data = data) %>% select(-phealth))[[1]])
-X_m0 <- X_m[data$smoke == 0,]
-X_m1 <- X_m[data$smoke == 1,]
-m0 <- data$phealth[data$smoke == 0]
-m1 <- data$phealth[data$smoke == 1]
+model <- logY ~ -1 + age + race_white + inc + bmi + edu + povlev + phealth
+data_new <- make_data(data, model, 'phealth', 'smoke')
+
+X_m <- quantile_normalize_bart(preprocess_df(model.frame(model_m, data = data_new) %>% select(-phealth))[[1]])
+X_m0 <- X_m[data_new$smoke == 0,]
+X_m1 <- X_m[data_new$smoke == 1,]
+m0 <- data_new$phealth[data_new$smoke == 0]
+m1 <- data_new$phealth[data_new$smoke == 1]
 
 bart_m0 <- softbart(X = X_m0, Y = m0, X_test = X_m)
 bart_m1 <- softbart(X = X_m1, Y = m1, X_test = X_m)
-# bart_m0 <- readRDS("Data/bart_m0.rds")
-# bart_m1 <- readRDS("Data/bart_m1.rds")
+# bart_m0 <- readRDS("bart_m0.rds")
+# bart_m1 <- readRDS("bart_m1.rds")
 
 m0_hat <- bart_m0$y_hat_test_mean
 m1_hat <- bart_m1$y_hat_test_mean
 
 # Estimate of propensity score
-glm_logit <- glm(smoke ~ age + race_white + inc + bmi + edu + coglim + povlev,
-                 data = data, family = binomial)
+glm_logit <- glm(smoke ~ age + race_white + inc + bmi + edu + povlev,
+                 data = data_new, family = binomial)
 pi_hat <- predict(glm_logit, type = 'response')
 
-data_new <- make_data(data, model_y, 'phealth', 'smoke', pi_hat, m0_hat, m1_hat)
-out_ordinal <- bart_mediate(data_new, model_m, model_y, 'phealth', 'logY', 'smoke', 8000, 4000)
+out_ordinal <- bart_mediate(data_new, model_m, model_y, pi_hat, m0_hat, m1_hat, 'phealth', 'logY', 'smoke', 8000, 4000)
 # out_ordinal <- readRDS("Data/out_ordinal.rds")
 
 # Traceplots
