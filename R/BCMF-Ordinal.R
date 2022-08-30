@@ -151,8 +151,8 @@ m1 <- data_new$phealth[data_new$smoke == 1]
 
 bart_m0 <- softbart(X = X_m0, Y = m0, X_test = X_m)
 bart_m1 <- softbart(X = X_m1, Y = m1, X_test = X_m)
-# bart_m0 <- readRDS("bart_m0.rds")
-# bart_m1 <- readRDS("bart_m1.rds")
+# bart_m0 <- readRDS("bart_m0_ordinal.rds")
+# bart_m1 <- readRDS("bart_m1_ordinal.rds")
 
 m0_hat <- bart_m0$y_hat_test_mean
 m1_hat <- bart_m1$y_hat_test_mean
@@ -163,7 +163,7 @@ glm_logit <- glm(smoke ~ age + race_white + inc + bmi + edu + povlev,
 pi_hat <- predict(glm_logit, type = 'response')
 
 out_ordinal <- bart_mediate(data_new, model_m, model_y, pi_hat, m0_hat, m1_hat, 'phealth', 'logY', 'smoke', 8000, 4000)
-# out_ordinal <- readRDS("Data/out_ordinal.rds")
+# out_ordinal <- readRDS("out_ordinal.rds")
 
 # Traceplots
 plot(out_ordinal$avg_direct)

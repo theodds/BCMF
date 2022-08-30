@@ -1,10 +1,8 @@
 library(SoftBart)
 library(glmnet)
-library(dplyr)
 library(truncnorm)
 library(rpart)
 library(gam)
-library(ggplot2)
 library(tidyverse)
 
 bart_mediate <- function(data, model_m, model_y, pi_hat, m0_hat, m1_hat, mediator_name, outcome_name, treat_name, n_iter, burnin){
@@ -18,14 +16,14 @@ bart_mediate <- function(data, model_m, model_y, pi_hat, m0_hat, m1_hat, mediato
   
   # Hypers for mu_m and tau
   hypers_mu_m <- hypers_tau <- Hypers(X_m, m)
-  opts_mu_m <- Opts()
+  opts_mu_m <- Opts(update_s = FALSE)
   opts_tau <- opts_mu_m
   opts_mu_m$update_sigma <- FALSE
   opts_tau$update_sigma <- FALSE
   
   # Hypers for mu_y, zeta, d
   hypers_mu_y <- hypers_zeta <- hypers_d <- Hypers(X_y, Y_scale)
-  opts_mu_y <- Opts()
+  opts_mu_y <- Opts(update_s = FALSE)
   opts_zeta <- opts_d <- opts_mu_y
   opts_zeta$update_sigma <- FALSE
   opts_d$update_sigma <- FALSE
@@ -134,19 +132,19 @@ m1 <- data$phealth[data$smoke == 1]
 
 bart_m0 <- softbart(X = X_m0, Y = m0, X_test = X_m)
 bart_m1 <- softbart(X = X_m1, Y = m1, X_test = X_m)
-# bart_m0 <- readRDS("Data/bart_m0.rds")
-# bart_m1 <- readRDS("Data/bart_m1.rds")
+# bart_m0 <- readRDS("bart_m0.rds")
+# bart_m1 <- readRDS("bart_m1.rds")
 
 m0_hat <- bart_m0$y_hat_test_mean
 m1_hat <- bart_m1$y_hat_test_mean
 
 # Estimate of propensity score
-glm_logit <- glm(smoke ~ age + race_white + inc + bmi + edu + coglim + povlev,
+glm_logit <- glm(smoke ~ age + race_white + inc + bmi + edu + povlev,
                  data = data, family = binomial)
 pi_hat <- predict(glm_logit, type = 'response')
 
 out_binary <- bart_mediate(data, model_m, model_y, pi_hat, m0_hat, m1_hat, 'phealth', 'logY', 'smoke', 8000, 4000)
-# out_binary <- readRDS("Data/out_binary.rds")
+# out_binary <- readRDS("out_binary.rds")
 
 # Traceplots
 plot(out_binary$avg_direct)
