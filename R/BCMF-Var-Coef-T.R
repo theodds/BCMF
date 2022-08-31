@@ -6,6 +6,8 @@ library(truncnorm)
 library(rpart)
 library(gam)
 library(tidyverse)
+library(rpart)
+library(rpart.plot)
 
 ## A function ----
 
@@ -239,39 +241,46 @@ ggplot(df_delta_q) +
   geom_vline(xintercept = 0, size = 1)
   # geom_hline(yintercept = 6250, color = "blue", size = 0.3)
 
+## Posterior projection, summarizing with trees ----
 
-## # Histograms
-## X <- model.frame(model_y, data)
-## i_1 <- df_delta_q$index[6250:nrow(data)]
-## i_2 <- df_delta_q$index[-(6250:nrow(data))]
-## subset_1 <- X[i_1,]
-## subset_2 <- X[i_2,]
+meps_post <- meps %>% 
+  mutate(delta_hat = colMeans(out_var_coef$indv_indirect), 
+         zeta_hat = colMeans(out_var_coef$indv_direct)) %>% 
+  select(age, race_white, loginc, bmi, edu, povlev, delta_hat, zeta_hat)
 
-## par(mfrow = c(2, 4))
-
-## hist(subset_2$age, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 0.06))
-## hist(subset_1$age, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$race_white, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 10))
-## hist(subset_1$race_white, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$inc, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 1.5e-05))
-## hist(subset_1$inc, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$bmi, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 0.07))
-## hist(subset_1$bmi, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$edu, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 0.4))
-## hist(subset_1$edu, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$povlev, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 0.003))
-## hist(subset_1$povlev, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$phealth, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 2.5))
-## hist(subset_1$phealth, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$logY, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 0.3))
-## hist(subset_1$logY, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
+rpart.plot(rpart(delta_hat ~ . - zeta_hat, data = meps_post))
 
 
+## Posterior projection, summarizing with a GAM ----
 
+pdf(NULL)
+project_gam <- gam(delta_hat ~ s(age, k = 10) + race_white + s(loginc, k = 10) + s(bmi, k = 10) + 
+                     s(edu, k = 4) + s(povlev, k = 10), data = meps_post)
+
+smooths <- plot(project_gam)
+
+smooth_age <- list()
+idx <- floor(seq(from = 1, to = 4000, length = 200))
+for(i in 1:length(idx)) {
+  print(i)
+  project_gam <- gam(delta_hat ~ s(age, k = 10) + race_white + 
+                       s(loginc, k = 10) + s(bmi, k = 10) + 
+                       s(edu, k = 4) + s(povlev, k = 10), data = meps_post %>% mutate(delta_hat = out_var_coef$indv_indirect[i,]))
+  p <- plot(project_gam)
+  smooth_age[[i]] <- data.frame(x = p[[1]]$x, y = p[[1]]$fit, iteration = i)
+}
+dev.off()
+
+smooth_age_df <- do.call(rbind, smooth_age)
+
+smooth_age_summary <- smooth_age_df %>% 
+  group_by(x) %>% summarize(mu = mean(y), LCL = quantile(y, 0.025), 
+                            UCL = quantile(y, 0.975))
+
+ggplot(smooth_age_df, aes(x = x, y = y)) + 
+  geom_line(aes(group = factor(iteration)), alpha = .1) + 
+              stat_summary(geom = "line", color = "chartreuse3", 
+                           alpha = 3, size = 2)
+
+ggplot(smooth_age_summary, aes(x = x, y = mu, ymin = LCL, ymax = UCL)) + 
+  geom_line(color = "chartreuse3", size = 2) + geom_ribbon(alpha= 0.3)
