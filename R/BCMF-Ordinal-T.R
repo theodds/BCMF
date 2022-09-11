@@ -7,6 +7,8 @@ library(rpart)
 library(gam)
 library(tidyverse)
 
+set.seed(929301) ## For replicability
+
 ## Function to make data ----
 
 make_data <- function(data, model_y, mediator_name, treat_name) {
@@ -19,36 +21,79 @@ make_data <- function(data, model_y, mediator_name, treat_name) {
   order <- 1:5
   m <- unlist(lapply(data[[mediator_name]], function(x) order[1:x]))
   z <- as.numeric(X_rep[[mediator_name]] == m)
-  X_final <- X_rep %>% mutate(m = m) %>% select(-mediator_name)
+  X_final <- X_rep %>% mutate(m = m) %>% select(-all_of(mediator_name))
   X_final[[mediator_name]] <- z
   X_final[['m']] <- m
   
   return(X_final)
 }
 
-## bart_mediate <- function(data, model_m, model_y, pi_hat, m0_hat, m1_hat, mediator_name, outcome_name, treat_name, n_iter, burnin){
-##   X_m <- quantile_normalize_bart(preprocess_df(model.frame(model_m, data = data) %>% select(-mediator_name))[[1]])
-##   X_y <- quantile_normalize_bart(preprocess_df(
-##          cbind(model.frame(model_y, data = data) %>% select(-outcome_name), m0_hat, m1_hat))[[1]])
+## Defining models ----
+
+model_m <- phealth ~ -1 + age + race_white + inc + bmi + edu + povlev + m
+model_y <- logY ~ -1 + age + race_white + inc + bmi + edu + povlev + phealth + m
+model <- logY ~ -1 + age + race_white + inc + bmi + edu + povlev + phealth
+
+## Setting up date ----
+
+meps <- readRDS("Data/meps_logy.rds")
+meps$smoke <- ifelse(meps$smoke == 2, 0, 1)
+meps_new <- make_data(meps, model, 'phealth', 'smoke')
+
+## Getting Clever Covariates? ----
+
+X_m <- model.frame(model_m, data = meps_new)  %>% select(-phealth) %>% 
+  preprocess_df() %>% pluck("X")
+X_m0 <- X_m[meps_new$smoke == 0,]
+X_m1 <- X_m[meps_new$smoke == 1,]
+m0 <- meps_new$phealth[meps_new$smoke == 0]
+m1 <- meps_new$phealth[meps_new$smoke == 1]
+
+bart_m0 <- softbart(X = X_m0, Y = m0, X_test = X_m)
+bart_m1 <- softbart(X = X_m1, Y = m1, X_test = X_m)
+# bart_m0 <- readRDS("bart_m0_ordinal.rds")
+# bart_m1 <- readRDS("bart_m1_ordinal.rds")
+
+m0_hat <- bart_m0$y_hat_test_mean
+m1_hat <- bart_m1$y_hat_test_mean
+
+# Estimate of propensity score
+glm_logit <- glm(smoke ~ age + race_white + inc + bmi + edu + povlev,
+                 data = meps_new, family = binomial)
+pi_hat <- predict(glm_logit, type = 'response')
+
+bart_mediate <- function(data, model_m, model_y, pi_hat, m0_hat, m1_hat, 
+                         mediator_name, outcome_name, treat_name, 
+                         n_iter, burnin) {
+  X_m <- model.frame(model_m, data = data) %>% 
+    select(-all_of(mediator_name)) %>% preprocess_df() %>% pluck("X") %>%
+    quantile_normalize_bart()
+
+  X_y <- model.frame(model_y, data = data) %>% select(-all_of(outcome_name)) %>%
+    cbind(m0_hat, m1_hat) %>% preprocess_df() %>% pluck("X") %>% 
+    quantile_normalize_bart()
+  
+  
+  
 ##   m <- data[[mediator_name]]
 ##   Y <- data[[outcome_name]]
 ##   Y_scale <- (Y - mean(Y)) / sd(Y)
 ##   A <- data[[treat_name]]
-  
+
 ##   # Hypers for mu_m and tau
 ##   hypers_mu_m <- hypers_tau <- Hypers(X_m, m)
 ##   opts_mu_m <- Opts(update_s = FALSE)
 ##   opts_tau <- opts_mu_m
 ##   opts_mu_m$update_sigma <- FALSE
 ##   opts_tau$update_sigma <- FALSE
-  
+
 ##   # Hypers for mu_y, zeta, d
 ##   hypers_mu_y <- hypers_zeta <- hypers_d <- Hypers(X_y, Y_scale)
 ##   opts_mu_y <- Opts(update_s = FALSE)
 ##   opts_zeta <- opts_d <- opts_mu_y
 ##   opts_zeta$update_sigma <- FALSE
 ##   opts_d$update_sigma <- FALSE
-  
+
 ##   # Forests
 ##   forest_mu_m  <- MakeForest(hypers_mu_m, opts_mu_m)
 ##   forest_tau <- MakeForest(hypers_tau, opts_tau)
@@ -57,114 +102,74 @@ make_data <- function(data, model_y, mediator_name, treat_name) {
 ##   forest_mu_y <- MakeForest(hypers_mu_y, opts_mu_y)
 ##   forest_zeta <- MakeForest(hypers_zeta, opts_zeta)
 ##   forest_d <- MakeForest(hypers_d, opts_d)
-  
+
 ##   # Initialize mu_m and tau
 ##   X_mu_m <- cbind(X_m, pi_hat)
 ##   mu_m <- forest_mu_m$do_predict(X_mu_m)
 ##   tau <- forest_tau$do_predict(X_m)
-  
+
 ##   # Initialize mu_y, zeta, d
 ##   mu_y <- forest_mu_y$do_predict(X_y)
 ##   zeta <- forest_zeta$do_predict(X_y)
 ##   d <- forest_d$do_predict(X_y)
-  
+
 ##   # Matrices for individual/average direct & indirect effects
 ##   zeta_indv <- matrix(NA, nrow = n_iter - burnin, ncol = nrow(X_y))
 ##   delta_indv <- matrix(NA, nrow = n_iter - burnin, ncol = nrow(X_y))
-  
+
 ##   zeta_avg <- rep(NA, n_iter - burnin)
 ##   delta_avg <- rep(NA, n_iter - burnin)
-  
+
 ##   for(i in 1:n_iter) {
 ##     print(i)
-    
+
 ##     # Mi(a)
 ##     Z <- rtruncnorm(length(m), a = ifelse(m == 0, -Inf, 0), b = ifelse(m == 0, 0, Inf), mean = mu_m + A * tau, sd = 1)
 ##     mu_m  <- forest_mu_m$do_gibbs(X_mu_m, Z - A * tau, X_mu_m, 1)
 ##     tau <- forest_tau$do_gibbs(X_m[A == 1,], Z[A == 1] - mu_m[A == 1], X_m, 1)
-    
+
 ##     # Yi(a)
 ##     mu_y  <- forest_mu_y$do_gibbs(X_y, Y_scale - A * zeta - m * d, X_y, 1)
-    
+
 ##     sigma_y <- forest_mu_y$get_sigma()
 ##     forest_zeta$set_sigma(sigma_y)
 ##     forest_d$set_sigma(sigma_y)
-    
+
 ##     zeta  <- forest_zeta$do_gibbs(X_y[A == 1,], Y_scale[A == 1] - mu_y[A == 1] - (m * d)[A == 1], X_y, 1)
 ##     d <- forest_d$do_gibbs(X_y[m == 1,], Y_scale[m == 1] - mu_y[m == 1] - (A * zeta)[m == 1], X_y, 1)
-    
+
 ##     # Direct and Indirect Effects
 ##     zeta_unscale <- zeta * sd(Y) # direct
 ##     d_unscale <- d * sd(Y)
 ##     delta <- (pnorm(mu_m + tau) - pnorm(mu_m)) * d_unscale # indirect
-    
+
 ##     if (i > burnin){
 ##       zeta_indv[i - burnin,] <- zeta_unscale
 ##       delta_indv[i - burnin,] <- delta
-      
+
 ##       omega <- MCMCpack::rdirichlet(1, rep(1, nrow(X_m)))
 ##       zeta_avg[i - burnin] <- sum(zeta_unscale * omega)
 ##       delta_avg[i - burnin] <- sum(delta * omega)
 ##     }
-    
+
 ##   }
-  
-##   return(list(indv_direct = zeta_indv, indv_indirect = delta_indv, 
-##               avg_direct = zeta_avg, avg_indirect = delta_avg))
-## }
 
-## projection_gam <- function(data, samples) {
-##     projections <- matrix(NA, nrow = nrow(samples), ncol = ncol(samples))
-##     for (i in 1:nrow(samples)) {
-##       formula <- samples[i,] ~ ns(age, 5) + race_white + ns(inc, 5) + ns(bmi, 5) +
-##         edu + ns(povlev, 5) + phealth
-##       gam_fit <- gam(formula, data = data)
-##       projections[i,] <- predict(gam_fit, type = 'response')
-##     }
-  
-##   return(projections = projections)
-## }
+  return(list(indv_direct = zeta_indv, indv_indirect = delta_indv,
+              avg_direct = zeta_avg, avg_indirect = delta_avg))
+}
 
-## projection_tree <- function(data, model, samples) {
-##     projections <- matrix(NA, nrow = nrow(samples), ncol = ncol(samples))
-##     for (i in 1:nrow(samples)) {
-##       X <- model.matrix(model, data = data)
-##       formula <- samples[i,] ~ .
-##       tree_fit <- rpart(formula, data = as.data.frame(X))
-##       projections[i,] <- predict(tree_fit)
-##     }
-  
-##   return(projections = projections)
-## }
+## Fitting the model ----
 
-# Model for m and y
-model_m <- phealth ~ -1 + age + race_white + inc + bmi + edu + povlev + m
-model_y <- logY ~ -1 + age + race_white + inc + bmi + edu + povlev + phealth + m
+out_ordinal <- bart_mediate(meps_new, model_m, model_y, pi_hat, m0_hat, m1_hat, 
+                            'phealth', 'logY', 'smoke', 8000, 4000)
 
-# Estimate clever covariates with BART
-meps <- readRDS("Data/meps_logy.rds")
-meps$smoke <- ifelse(meps$smoke == 2, 0, 1)
-model <- logY ~ -1 + age + race_white + inc + bmi + edu + povlev + phealth
-meps_new <- make_data(meps, model, 'phealth', 'smoke')
+## Junk ----
 
-## X_m <- quantile_normalize_bart(preprocess_df(model.frame(model_m, data = meps_new) %>% select(-phealth))[[1]])
-## X_m0 <- X_m[meps_new$smoke == 0,]
-## X_m1 <- X_m[meps_new$smoke == 1,]
-## m0 <- meps_new$phealth[meps_new$smoke == 0]
-## m1 <- meps_new$phealth[meps_new$smoke == 1]
 
-## bart_m0 <- softbart(X = X_m0, Y = m0, X_test = X_m)
-## bart_m1 <- softbart(X = X_m1, Y = m1, X_test = X_m)
-## # bart_m0 <- readRDS("bart_m0_ordinal.rds")
-## # bart_m1 <- readRDS("bart_m1_ordinal.rds")
 
-## m0_hat <- bart_m0$y_hat_test_mean
-## m1_hat <- bart_m1$y_hat_test_mean
 
-## # Estimate of propensity score
-## glm_logit <- glm(smoke ~ age + race_white + inc + bmi + edu + povlev,
-##                  data = meps_new, family = binomial)
-## pi_hat <- predict(glm_logit, type = 'response')
+
+
 
 ## out_ordinal <- bart_mediate(meps_new, model_m, model_y, pi_hat, m0_hat, m1_hat, 'phealth', 'logY', 'smoke', 8000, 4000)
 ## # out_ordinal <- readRDS("out_ordinal.rds")
