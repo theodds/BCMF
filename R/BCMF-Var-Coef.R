@@ -95,7 +95,7 @@ bart_mediate <- function(data, model_m, model_y, pi_hat, m0_hat, m1_hat, mediato
               avg_direct = zeta_avg, avg_indirect = delta_avg))
 }
 
-projection_gam <- function(data, samples, type) {
+projection_gam <- function(data, samples) {
     projections <- matrix(NA, nrow = nrow(samples), ncol = ncol(samples))
     for (i in 1:nrow(samples)) {
       formula <- samples[i,] ~ ns(age, 5) + race_white + ns(inc, 5) + ns(bmi, 5) +
@@ -107,7 +107,7 @@ projection_gam <- function(data, samples, type) {
   return(projections = projections)
 }
 
-projection_tree <- function(data, model_y, samples, type) {
+projection_tree <- function(data, model_y, samples) {
     projections <- matrix(NA, nrow = nrow(samples), ncol = ncol(samples))
     for (i in 1:nrow(samples)) {
       X <- model.matrix(model_y, data = data)
