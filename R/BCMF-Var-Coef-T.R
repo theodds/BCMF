@@ -6,6 +6,8 @@ library(truncnorm)
 library(rpart)
 library(gam)
 library(tidyverse)
+library(rpart)
+library(rpart.plot)
 
 ## A function ----
 
@@ -113,29 +115,6 @@ bart_mediate <- function(data, model_m, model_y, pi_hat, m0_hat, m1_hat,
               avg_direct = zeta_avg, avg_indirect = delta_avg))
 }
 
-## projection_gam <- function(data, samples, type) {
-##     projections <- matrix(NA, nrow = nrow(samples), ncol = ncol(samples))
-##     for (i in 1:nrow(samples)) {
-##       formula <- samples[i,] ~ ns(age, 5) + race_white + ns(inc, 5) + ns(bmi, 5) +
-##         edu + ns(povlev, 5) + phealth
-##       gam_fit <- gam(formula, data = data)
-##       projections[i,] <- predict(gam_fit, type = 'response')
-##     }
-  
-##   return(projections = projections)
-## }
-
-## projection_tree <- function(data, model_y, samples, type) {
-##     projections <- matrix(NA, nrow = nrow(samples), ncol = ncol(samples))
-##     for (i in 1:nrow(samples)) {
-##       X <- model.matrix(model_y, data = data)
-##       formula <- samples[i,] ~ .
-##       tree_fit <- rpart(formula, data = as.data.frame(X))
-##       projections[i,] <- predict(tree_fit)
-##     }
-  
-##   return(projections = projections)
-## }
 
 # Model for m and y
 model_m <- phealth ~ -1 + age + race_white + inc + bmi + edu + povlev
@@ -155,8 +134,6 @@ m1   <- meps$phealth[meps$smoke == 1]
 
 bart_m0 <- softbart(X = X_m0, Y = m0, X_test = X_m)
 bart_m1 <- softbart(X = X_m1, Y = m1, X_test = X_m)
-## # bart_m0 <- readRDS("bart_m0.rds")
-## # bart_m1 <- readRDS("bart_m1.rds")
 
 m0_hat <- bart_m0$y_hat_test_mean
 m1_hat <- bart_m1$y_hat_test_mean
@@ -176,29 +153,15 @@ plot(out_var_coef$avg_indirect)
 plot(out_var_coef$indv_direct[,1])
 plot(out_var_coef$indv_indirect[,1])
 
-## # Projections GAM
-## proj_gam_zeta <- projection_gam(data, out_var_coef$indv_direct)
-## proj_gam_delta <- projection_gam(data, out_var_coef$indv_indirect)
 
-## hist(proj_gam_zeta[,1])
-## hist(proj_gam_delta[,1])
-
-## # Projections Tree
-## proj_tree_zeta <- projection_tree(data, model_y, out_var_coef$indv_direct)
-## proj_tree_delta <- projection_tree(data, model_y, out_var_coef$indv_indirect)
-
-## hist(proj_tree_zeta[,1])
-## hist(proj_tree_delta[,1])
-
-## # Actual delta, zeta
-## hist(out_var_coef$avg_direct)
-## hist(out_var_coef$avg_indirect)
-
-## hist(out_var_coef$indv_direct[,1])
-## hist(out_var_coef$indv_indirect[,1])
+# # Actual delta, zeta
+# hist(out_var_coef$avg_direct)
+# hist(out_var_coef$avg_indirect)
+# hist(out_var_coef$indv_direct[,1])
+# hist(out_var_coef$indv_indirect[,1])
 
 
-# Waterfall Plots
+## Waterfall Plots ----
 get_quantiles <- function(samples, probs) {
   n <- ncol(samples)
   quantiles <- matrix(unlist(lapply(1:n, 
@@ -229,7 +192,6 @@ ggplot(df_zeta_q) +
   xlab('Direct Effect (zeta)') +
   ylab('Index') +
   geom_vline(xintercept = 0, size = 1)
-  # geom_hline(yintercept = 7030, color = "blue", size = 0.3)
 
 ggplot(df_delta_q) + 
   geom_segment(aes(x = start, y = 1:nrow(zeta_quantiles), xend = end, yend = 1:nrow(zeta_quantiles)), color = "dark gray") +
@@ -237,41 +199,113 @@ ggplot(df_delta_q) +
   xlab('Indirect Effect (delta)') +
   ylab('Index') +
   geom_vline(xintercept = 0, size = 1)
-  # geom_hline(yintercept = 6250, color = "blue", size = 0.3)
 
 
-## # Histograms
-## X <- model.frame(model_y, data)
-## i_1 <- df_delta_q$index[6250:nrow(data)]
-## i_2 <- df_delta_q$index[-(6250:nrow(data))]
-## subset_1 <- X[i_1,]
-## subset_2 <- X[i_2,]
+## Posterior projection, summarizing with trees ----
 
-## par(mfrow = c(2, 4))
+projection_tree <- function(data, model_y, samples) {
+  projections <- matrix(NA, nrow = nrow(samples), ncol = ncol(samples))
+  for (i in 1:nrow(samples)) {
+    X <- model.matrix(model_y, data = data)
+    formula <- samples[i,] ~ .
+    tree_fit <- rpart(formula, data = as.data.frame(X))
+    projections[i,] <- predict(tree_fit)
+  }
+  return (projections)
+}
 
-## hist(subset_2$age, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 0.06))
-## hist(subset_1$age, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
+meps_post <- meps %>% 
+  mutate(delta_hat = colMeans(out_var_coef$indv_indirect), 
+         zeta_hat = colMeans(out_var_coef$indv_direct)) %>% 
+  select(age, race_white, loginc, bmi, edu, povlev, delta_hat, zeta_hat)
 
-## hist(subset_2$race_white, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 10))
-## hist(subset_1$race_white, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
+rpart.plot(rpart(delta_hat ~ . - zeta_hat, data = meps_post, control = rpart.control(cp = 0.08)))
 
-## hist(subset_2$inc, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 1.5e-05))
-## hist(subset_1$inc, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
+subgroup1 <- meps_post %>% filter(age < 34 & race_white == 1)
+subgroup2 <- meps_post %>% filter(age < 34 & race_white == 0)
+subgroup3 <- meps_post %>% filter(age >= 67)
+subgroup4 <- meps_post %>% filter(age >= 34 & age < 67 & race_white == 1)
+subgroup5 <- meps_post %>% filter(age >= 34 & age < 67 & race_white == 0)
 
-## hist(subset_2$bmi, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 0.07))
-## hist(subset_1$bmi, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$edu, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 0.4))
-## hist(subset_1$edu, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$povlev, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 0.003))
-## hist(subset_1$povlev, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$phealth, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 2.5))
-## hist(subset_1$phealth, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
-## hist(subset_2$logY, probability = TRUE, col = alpha('blue', 0.5), ylim = c(0, 0.3))
-## hist(subset_1$logY, probability = TRUE, col = alpha('red', 0.5), add = TRUE)
-
+plot(NULL, xlim = c(-0.03,0.2), ylim = c(0, 30), ylab = 'Density', xlab = 'delta')
+lines(density(subgroup1$delta_hat), col = 'blue')
+lines(density(subgroup2$delta_hat), col = 'blue', lty = 2)
+lines(density(subgroup3$delta_hat), col = 'green')
+lines(density(subgroup4$delta_hat), col = 'red')
+lines(density(subgroup5$delta_hat), col = 'red', lty = 2)
+legend('topright',
+       legend = c('age < 34 & white', 'age < 34 & non-white', 'age >= 67',
+                  '34 <= age < 67 & white', '34 <= age < 67 & non-white'),
+       col = c('blue', 'blue', 'green', 'red', 'red'),
+       lty = c(1,2,1,1,2), cex = 0.8)
 
 
+## Posterior projection, summarizing with a GAM ----
+
+# projection_gam <- function(data, samples) {
+#   projections <- matrix(NA, nrow = nrow(samples), ncol = ncol(samples))
+#   for (i in 1:nrow(samples)) {
+#     formula <- samples[i,] ~ ns(age, 5) + race_white + ns(inc, 5) + ns(bmi, 5) +
+#                edu + ns(povlev, 5) + phealth
+#     gam_fit <- gam(formula, data = data)
+#     projections[i,] <- predict(gam_fit, type = 'response')
+#   }
+#   return(projections)
+# }
+
+pdf(NULL)
+project_gam <- gam(delta_hat ~ s(age, k = 10) + race_white + s(loginc, k = 10) + s(bmi, k = 10) + 
+                     s(edu, k = 4) + s(povlev, k = 10), data = meps_post)
+
+smooths <- plot(project_gam)
+
+smooth_age <- list()
+idx <- floor(seq(from = 1, to = 4000, length = 200))
+for(i in 1:length(idx)) {
+  print(i)
+  project_gam <- gam(delta_hat ~ s(age, k = 10) + race_white + 
+                       s(loginc, k = 10) + s(bmi, k = 10) + 
+                       s(edu, k = 4) + s(povlev, k = 10), data = meps_post %>% mutate(delta_hat = out_var_coef$indv_indirect[i,]))
+  p <- plot(project_gam)
+  smooth_age[[i]] <- data.frame(x = p[[1]]$x, y = p[[1]]$fit, iteration = i)
+}
+dev.off()
+
+smooth_age_df <- do.call(rbind, smooth_age)
+
+smooth_age_summary <- smooth_age_df %>% 
+  group_by(x) %>% summarize(mu = mean(y), LCL = quantile(y, 0.025), 
+                            UCL = quantile(y, 0.975))
+
+ggplot(smooth_age_df, aes(x = x, y = y)) + 
+  geom_line(aes(group = factor(iteration)), alpha = .1) + 
+              stat_summary(geom = "line", color = "chartreuse3", 
+                           alpha = 3, size = 2)
+
+ggplot(smooth_age_summary, aes(x = x, y = mu, ymin = LCL, ymax = UCL)) + 
+  geom_line(color = "chartreuse3", size = 2) + geom_ribbon(alpha= 0.3)
+
+
+## R^2 ----
+r_sq <- function(samples, samples_proj) {
+  r2 <- rep(NA, nrow(samples))
+  for (i in 1:nrow(samples)) {
+    num <- sum((samples[i,] - samples_proj[i,])^2)
+    denom <- sum((samples[i,] - mean(samples[i,]))^2)
+    r2[i] <- 1 - (num / denom)
+  }
+  
+  samples_mean <- colMeans(samples)
+  samples_proj_mean <- colMeans(samples_proj)
+  num <- sum((samples_mean - samples_proj_mean)^2)
+  denom <- sum((samples_mean - mean(samples))^2)
+  r2_mean <- 1 - (num / denom)
+  
+  return(list(r2 = r2, r2_mean = r2_mean))
+}
+
+proj_tree_delta <- projection_tree(meps, model_y, out_var_coef$indv_indirect)
+r_sq_out <- r_sq(out_var_coef$indv_indirect, proj_tree_delta)
+
+hist(r_sq_out$r2)
+abline(v = r_sq_out$r2_mean, col = 'red')
