@@ -112,7 +112,7 @@ bart_mediate_sim <- function(data_train, data_test, model_m, model_y,
     d_test <- forest_d$do_predict(X_y_test)
 
     # Unscale
-    mu_y_unscale <- mean(Y) + (mu_y_test * sd(Y))
+    mu_y_unscale <- mean(Y) + (mu_y_test * sd(Y)) - mean(m) / sd(m) * d_test * sd(Y)
     zeta_unscale <- zeta_test * sd(Y)
     d_unscale <- d_test * sd(Y) / sd(m)
     mu_m_unscale <- mean(m) + (mu_m_test * sd(m))
@@ -230,9 +230,9 @@ group5_indirect_true <- mean(indv_indirect_true[i5])
 
 
 # Make training & testing set
-# n <- nrow(meps)
+n <- nrow(meps)
 set.seed(1)
-i_train <- sample(1:nrow(meps), 5000)
+i_train <- sample(1:nrow(meps), floor(n/2))
 i_test <- c(1:nrow(meps))[-i_train]
 
 # Effects for training set
@@ -468,37 +468,45 @@ simulation <- do_simulation(meps, i_train, i_test, model_m, model_y, model_ps,
                             mu_m_hat_train, tau_hat_train, sigma_y_hat, sigma_m_hat,
                             8000, 4000, 5)
 
-coverage_avg_direct <- rep(NA, 5)
-coverage_avg_indirect <- rep(NA, 5)
-coverage_indirect_subgroup1 <- rep(NA, 5)
-coverage_indirect_subgroup2 <- rep(NA, 5)
-coverage_indirect_subgroup3 <- rep(NA, 5)
-coverage_indirect_subgroup4 <- rep(NA, 5)
-coverage_indirect_subgroup5 <- rep(NA, 5)
-for (i in 1:5){
-  in_avg_direct <- (avg_direct_true >= simulation$avg_direct_intervals[i,1]) &
-                   (avg_direct_true <= simulation$avg_direct_intervals[i,2])
-  in_avg_indirect <- (avg_indirect_true >= simulation$avg_indirect_intervals[i,1]) &
-                    (avg_indirect_true <= simulation$avg_indirect_intervals[i,2])
-  in_indirect_subgroup1 <- (group1_indirect_true >= simulation$group1_indirect_intervals[i,1]) &
-                         (group1_indirect_true <= simulation$group1_indirect_intervals[i,2])
-  in_indirect_subgroup2 <- (group2_indirect_true >= simulation$group2_indirect_intervals[i,1]) &
-                         (group2_indirect_true <= simulation$group2_indirect_intervals[i,2]) 
-  in_indirect_subgroup3 <- (group3_indirect_true >= simulation$group3_indirect_intervals[i,1]) &
-                         (group3_indirect_true <= simulation$group3_indirect_intervals[i,2])
-  in_indirect_subgroup4 <- (group4_indirect_true >= simulation$group4_indirect_intervals[i,1]) &
-                           (group4_indirect_true <= simulation$group4_indirect_intervals[i,2])
-  in_indirect_subgroup5 <- (group5_indirect_true >= simulation$group5_indirect_intervals[i,1]) &
-                           (group5_indirect_true <= simulation$group5_indirect_intervals[i,2])
-  
-  coverage_avg_direct[i] = in_avg_direct
-  coverage_avg_indirect[i] = in_avg_indirect
-  coverage_indirect_subgroup1[i] = in_indirect_subgroup1
-  coverage_indirect_subgroup2[i] = in_indirect_subgroup2
-  coverage_indirect_subgroup3[i] = in_indirect_subgroup3
-  coverage_indirect_subgroup4[i] = in_indirect_subgroup4
-  coverage_indirect_subgroup5[i] = in_indirect_subgroup5
-  
-}
+
+
+
+
+
+
+
+
+# coverage_avg_direct <- rep(NA, 5)
+# coverage_avg_indirect <- rep(NA, 5)
+# coverage_indirect_subgroup1 <- rep(NA, 5)
+# coverage_indirect_subgroup2 <- rep(NA, 5)
+# coverage_indirect_subgroup3 <- rep(NA, 5)
+# coverage_indirect_subgroup4 <- rep(NA, 5)
+# coverage_indirect_subgroup5 <- rep(NA, 5)
+# for (i in 1:5){
+#   in_avg_direct <- (avg_direct_true >= simulation$avg_direct_intervals[i,1]) &
+#                    (avg_direct_true <= simulation$avg_direct_intervals[i,2])
+#   in_avg_indirect <- (avg_indirect_true >= simulation$avg_indirect_intervals[i,1]) &
+#                     (avg_indirect_true <= simulation$avg_indirect_intervals[i,2])
+#   in_indirect_subgroup1 <- (group1_indirect_true >= simulation$group1_indirect_intervals[i,1]) &
+#                          (group1_indirect_true <= simulation$group1_indirect_intervals[i,2])
+#   in_indirect_subgroup2 <- (group2_indirect_true >= simulation$group2_indirect_intervals[i,1]) &
+#                          (group2_indirect_true <= simulation$group2_indirect_intervals[i,2]) 
+#   in_indirect_subgroup3 <- (group3_indirect_true >= simulation$group3_indirect_intervals[i,1]) &
+#                          (group3_indirect_true <= simulation$group3_indirect_intervals[i,2])
+#   in_indirect_subgroup4 <- (group4_indirect_true >= simulation$group4_indirect_intervals[i,1]) &
+#                            (group4_indirect_true <= simulation$group4_indirect_intervals[i,2])
+#   in_indirect_subgroup5 <- (group5_indirect_true >= simulation$group5_indirect_intervals[i,1]) &
+#                            (group5_indirect_true <= simulation$group5_indirect_intervals[i,2])
+#   
+#   coverage_avg_direct[i] = in_avg_direct
+#   coverage_avg_indirect[i] = in_avg_indirect
+#   coverage_indirect_subgroup1[i] = in_indirect_subgroup1
+#   coverage_indirect_subgroup2[i] = in_indirect_subgroup2
+#   coverage_indirect_subgroup3[i] = in_indirect_subgroup3
+#   coverage_indirect_subgroup4[i] = in_indirect_subgroup4
+#   coverage_indirect_subgroup5[i] = in_indirect_subgroup5
+#   
+# }
 
 
