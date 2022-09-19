@@ -466,7 +466,7 @@ simulation <- do_simulation(meps, i_train, i_test, model_m, model_y, model_ps,
                             'phealth', 'logY', 'smoke',
                             mu_y_hat_train, zeta_hat_train, d_hat_train,
                             mu_m_hat_train, tau_hat_train, sigma_y_hat, sigma_m_hat,
-                            10, 0, 2)
+                            8000, 4000, 2)
 
 
 
