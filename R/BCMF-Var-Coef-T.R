@@ -255,7 +255,7 @@ df_subgroups = data.frame(
 
 df_subgroups %>%
   ggplot(aes(x = value, y = subgroup, fill = subgroup)) +
-  stat_halfeye(alpha = 0.8) + xlab('delta') + scale_colour_viridis_d()
+  stat_halfeye(alpha = 0.8) + xlab('delta') + scale_fill_viridis_d()
 
 
 ## Posterior projection, summarizing with a GAM ----
