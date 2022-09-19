@@ -179,7 +179,7 @@ model_m <- phealth ~ -1 + age + race_white + inc + bmi + edu + povlev
 model_y <- logY ~ -1 + age + race_white + inc + bmi + edu + povlev + phealth
 
 # Clever covariates for entire set
-clever_cov <- get_clever_cov(meps, model_m, 'phealth', 'logY', 'smoke')
+clever_cov <- get_clever_cov(meps, meps, model_m, 'phealth', 'logY', 'smoke')
 m0_hat <- clever_cov$m0_hat
 m1_hat <- clever_cov$m1_hat
 
@@ -245,8 +245,8 @@ tau_hat_train  <- tau_hat[i_train]
 
 do_simulation <- function(data, i_train, i_test, model_m, model_y, model_ps,
                           mediator_name, outcome_name, treat_name,
-                          mu_y_train, zeta_train, d_train, 
-                          mu_m_train, tau_train, sigma_y, sigma_m,
+                          mu_y_hat_train, zeta_hat_train, d_hat_train, 
+                          mu_m_hat_train, tau_hat_train, sigma_y_hat, sigma_m_hat,
                           n_iter, burnin, n_reps) {
   
   # Get training and testing set
@@ -295,8 +295,8 @@ do_simulation <- function(data, i_train, i_test, model_m, model_y, model_ps,
     epsilon_m <- rnorm(nrow(data_train))
     A_train <- data_train[[mediator_name]]
     
-    m_sim <- mu_m_train + A_train * tau_train + sigma_m * epsilon_m
-    Y_sim <- mu_y_train + A_train * zeta_train + m_sim * d_train + sigma_y * epsilon_y
+    m_sim <- mu_m_hat_train + A_train * tau_hat_train + sigma_m_hat * epsilon_m
+    Y_sim <- mu_y_hat_train + A_train * zeta_hat_train + m_sim * d_hat_train + sigma_y_hat * epsilon_y
     
     data_train[[outcome_name]]  <- Y_sim
     data_train[[mediator_name]] <- m_sim
@@ -466,7 +466,7 @@ simulation <- do_simulation(meps, i_train, i_test, model_m, model_y, model_ps,
                             'phealth', 'logY', 'smoke',
                             mu_y_hat_train, zeta_hat_train, d_hat_train,
                             mu_m_hat_train, tau_hat_train, sigma_y_hat, sigma_m_hat,
-                            8000, 4000, 5)
+                            10, 0, 2)
 
 
 
