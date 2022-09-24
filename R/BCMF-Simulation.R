@@ -17,6 +17,7 @@ bart_mediate_sim <- function(data_train, data_test, model_m, model_y,
                              m1_hat_train, m1_hat_test,
                              mediator_name, outcome_name, treat_name,
                              n_iter, burnin) {
+
   X_m_train <- quantile_normalize_bart(preprocess_df(
     model.frame(model_m, data = data_train) %>% select(-mediator_name))[[1]])
   X_y_train <- quantile_normalize_bart(preprocess_df(
@@ -247,226 +248,184 @@ do_simulation <- function(data, i_train, i_test, model_m, model_y, model_ps,
                           mediator_name, outcome_name, treat_name,
                           mu_y_hat_train, zeta_hat_train, d_hat_train, 
                           mu_m_hat_train, tau_hat_train, sigma_y_hat, sigma_m_hat,
-                          n_iter, burnin, n_reps) {
+                          n_iter, burnin, n_reps, seeds) {
   
   # Get training and testing set
   data_train <- data[i_train,]
   data_test <- data[i_test,]
   
-  # Store intervals
-  avg_direct_intervals    <- matrix(NA, nrow = n_reps, ncol = 2)
-  avg_indirect_intervals  <- matrix(NA, nrow = n_reps, ncol = 2)
-  indv_direct_intervals   <- array(NA, dim = c(nrow(data_test), 2, n_reps))
-  indv_indirect_intervals <- array(NA, dim = c(nrow(data_test), 2, n_reps))
+  # Store results
+  colnames_indv      <- c('seed', 'subj_id', 'zeta_mean', 'zeta_lower',
+                          'zeta_upper', 'delta_mean', 'delta_lower',
+                          'delta_upper')
+  colnames_subgroup <- c('seed', 'group', 'zeta_mean', 'zeta_lower',
+                          'zeta_upper', 'delta_mean', 'delta_lower',
+                          'delta_upper')
+  colnames_avg       <- c('seed', 'zeta_mean', 'zeta_lower',
+                          'zeta_upper', 'delta_mean', 'delta_lower',
+                          'delta_upper')
   
-  group1_direct_intervals <- matrix(NA, nrow = n_reps, ncol = 2)
-  group2_direct_intervals <- matrix(NA, nrow = n_reps, ncol = 2)
-  group3_direct_intervals <- matrix(NA, nrow = n_reps, ncol = 2)
-  group4_direct_intervals <- matrix(NA, nrow = n_reps, ncol = 2)
-  group5_direct_intervals <- matrix(NA, nrow = n_reps, ncol = 2)
-  
-  group1_indirect_intervals <- matrix(NA, nrow = n_reps, ncol = 2)
-  group2_indirect_intervals <- matrix(NA, nrow = n_reps, ncol = 2)
-  group3_indirect_intervals <- matrix(NA, nrow = n_reps, ncol = 2)
-  group4_indirect_intervals <- matrix(NA, nrow = n_reps, ncol = 2)
-  group5_indirect_intervals <- matrix(NA, nrow = n_reps, ncol = 2)
-  
-  # Store Means
-  avg_direct_means    <- rep(NA, n_reps)
-  avg_indirect_means  <- rep(NA, n_reps)
-  indv_direct_means   <- matrix(NA, nrow = n_reps, ncol = nrow(data_test))
-  indv_indirect_means <- matrix(NA, nrow = n_reps, ncol = nrow(data_test))
-  
-  group1_direct_means <- rep(NA, n_reps)
-  group2_direct_means <- rep(NA, n_reps)
-  group3_direct_means <- rep(NA, n_reps)
-  group4_direct_means <- rep(NA, n_reps)
-  group5_direct_means <- rep(NA, n_reps)
-  
-  group1_indirect_means <- rep(NA, n_reps)
-  group2_indirect_means <- rep(NA, n_reps)
-  group3_indirect_means <- rep(NA, n_reps)
-  group4_indirect_means <- rep(NA, n_reps)
-  group5_indirect_means <- rep(NA, n_reps)
+  indv_mat      <- matrix(NA, nrow = n_reps * nrow(data_test), 
+                          ncol = length(colnames_indv),
+                          dimnames = list(c(), colnames_indv))
+  subgroup_mat <- matrix(NA, nrow = n_reps * 5,
+                         ncol = length(colnames_subgroup),
+                         dimnames = list(c(), colnames_subgroup))
+  avg_mat       <- matrix(NA, nrow = n_reps, 
+                          ncol = length(colnames_avg),
+                          dimnames = list(c(), colnames_avg))
   
   for (i in 1:n_reps) {
-    # Make training simulation set
-    epsilon_y <- rnorm(nrow(data_train))
-    epsilon_m <- rnorm(nrow(data_train))
-    A_train <- data_train[[mediator_name]]
     
-    m_sim <- mu_m_hat_train + A_train * tau_hat_train + sigma_m_hat * epsilon_m
-    Y_sim <- mu_y_hat_train + A_train * zeta_hat_train + m_sim * d_hat_train + sigma_y_hat * epsilon_y
+    file_name_indv <- paste0('Simulation/indv_seed', seeds[i], '.rds')
+    file_name_subgroup <- paste0('Simulation/subgroup_seed', seeds[i], '.rds')
+    file_name_avg <- paste0('Simulation/avg_seed', seeds[i], '.rds')
     
-    data_train[[outcome_name]]  <- Y_sim
-    data_train[[mediator_name]] <- m_sim
+    if (file.exists(file_name_indv) & file.exists(file_name_subgroup) & file.exists(file_name_avg)) {
+      indv_mat_i <- readRDS(file_name_indv)
+      subgroup_mat_i <- readRDS(file_name_subgroup)
+      avg_mat_i <- readRDS(file_name_avg)
+    } 
+    else {
+      set.seed(seeds[i])
+      
+      # Make training simulation set
+      epsilon_y <- rnorm(nrow(data_train))
+      epsilon_m <- rnorm(nrow(data_train))
+      A_train <- data_train[[mediator_name]]
+      
+      m_sim <- mu_m_hat_train + A_train * tau_hat_train + sigma_m_hat * epsilon_m
+      Y_sim <- mu_y_hat_train + A_train * zeta_hat_train + m_sim * d_hat_train + sigma_y_hat * epsilon_y
+      
+      data_train[[outcome_name]]  <- Y_sim
+      data_train[[mediator_name]] <- m_sim
+      
+      # Clever covariates for training/testing set
+      clever_cov <- get_clever_cov(data_train, data, model_m,
+                                   mediator_name, outcome_name, treat_name)
+      m0_hat <- clever_cov$m0_hat
+      m1_hat <- clever_cov$m1_hat
+      m0_hat_train <- m0_hat[i_train]
+      m1_hat_train <- m1_hat[i_train]
+      
+      # Propensity score for training/testing set
+      pi_hat <- get_ps(data, data, model_ps)
+      pi_hat_train <- pi_hat[i_train]
+      
+      # Get output for simulated dataset
+      out_sim <- bart_mediate_sim(data_train, data, model_m, model_y,
+                                  pi_hat_train, pi_hat,
+                                  m0_hat_train, m0_hat,
+                                  m1_hat_train, m1_hat,
+                                  'phealth', 'logY', 'smoke',
+                                  n_iter, burnin)
+      
+      # Get simulated direct/indirect distributions
+      zeta <- out_sim$zeta_samples
+      zeta_train <- zeta[,i_train]
+      zeta_test <- zeta[,i_test]
+      
+      d <- out_sim$d_samples
+      d_train <- d[,i_train]
+      d_test <- d[,i_test]
+      
+      tau <- out_sim$tau_samples
+      tau_train <- tau[,i_train]
+      tau_test <- tau[,i_test]
+      
+      delta_train <- d_train * tau_train
+      delta_test <- d_test * tau_test
+      
+      avg_direct    <- rowMeans(zeta_train)
+      avg_indirect  <- rowMeans(delta_train)
+      indv_direct   <- zeta_test
+      indv_indirect <- delta_test
+      
+      i1_train <- which(data_train$age < 34 & data_train$race_white == 1)
+      i2_train <- which(data_train$age < 34 & data_train$race_white == 0)
+      i3_train <- which(data_train$age >= 67)
+      i4_train <- which(data_train$age >= 34 & data_train$age < 67 & data_train$race_white == 1)
+      i5_train <- which(data_train$age >= 34 & data_train$age < 67 & data_train$race_white == 0)
+      
+      group1_direct <- rowMeans(zeta_train[,i1_train])
+      group2_direct <- rowMeans(zeta_train[,i2_train])
+      group3_direct <- rowMeans(zeta_train[,i3_train])
+      group4_direct <- rowMeans(zeta_train[,i4_train])
+      group5_direct <- rowMeans(zeta_train[,i5_train])
+      
+      group1_indirect <- rowMeans((delta_train)[,i1_train])
+      group2_indirect <- rowMeans((delta_train)[,i2_train])
+      group3_indirect <- rowMeans((delta_train)[,i3_train])
+      group4_indirect <- rowMeans((delta_train)[,i4_train])
+      group5_indirect <- rowMeans((delta_train)[,i5_train])
+      
+      # Get direct/indirect credible intervals
+      avg_direct_interval    <- quantile(avg_direct, probs = c(0.025, 0.975))
+      avg_indirect_interval  <- quantile(avg_indirect, probs = c(0.025, 0.975))
+      
+      indv_direct_interval   <- colQuantiles(indv_direct, probs = c(0.025, 0.975))
+      indv_indirect_interval <- colQuantiles(indv_indirect, probs = c(0.025, 0.975))
+      
+      subgroup_direct <- cbind(group1_direct, group2_direct, group3_direct,
+                               group4_direct, group5_direct)
+      subgroup_indirect <- cbind(group1_indirect, group2_indirect, group3_indirect, 
+                                 group4_indirect, group5_indirect)
+      subgroup_direct_interval <- colQuantiles(subgroup_direct, probs = c(0.025, 0.975))
+      subgroup_indirect_interval <- colQuantiles(subgroup_indirect, probs = c(0.025, 0.975))
+      
+      # Mean point estimates
+      avg_direct_mean    <- mean(avg_direct)
+      avg_indirect_mean  <- mean(avg_indirect)
+      
+      indv_direct_mean   <- colMeans(indv_direct)
+      indv_indirect_mean <- colMeans(indv_indirect)
+      
+      subgroup_direct_mean <- colMeans(subgroup_direct)
+      subgroup_indirect_mean <- colMeans(subgroup_indirect)
+      
+      # Saving
+      # Individual
+      indv_mat_i <- cbind(rep(seeds[i], nrow(data_test)), 1:nrow(data_test),
+                          indv_direct_mean, indv_direct_interval,
+                          indv_indirect_mean, indv_indirect_interval)
+      colnames(indv_mat_i) <- colnames_indv
+      saveRDS(indv_mat_i, file_name_indv)
+      
+      # Subgroup
+      subgroup_mat_i <- cbind(rep(seeds[i], 5), 1:5,
+                              subgroup_direct_mean, subgroup_direct_interval,
+                              subgroup_indirect_mean, subgroup_indirect_interval)
+      colnames(subgroup_mat_i) <- colnames_subgroup
+      saveRDS(subgroup_mat_i, file_name_subgroup)
+      
+      # Average
+      avg_mat_i <- c(seeds[i], avg_direct_mean, avg_direct_interval,
+                     avg_indirect_mean, avg_indirect_interval)
+      names(avg_mat_i) <- colnames_avg
+      saveRDS(avg_mat_i, file_name_avg)
+    }
     
-    # Clever covariates for training/testing set
-    clever_cov <- get_clever_cov(data_train, data, model_m,
-                                 mediator_name, outcome_name, treat_name)
-    m0_hat <- clever_cov$m0_hat
-    m1_hat <- clever_cov$m1_hat
-    m0_hat_train <- m0_hat[i_train]
-    m1_hat_train <- m1_hat[i_train]
-    
-    # Propensity score for training/testing set
-    pi_hat <- get_ps(data, data, model_ps)
-    pi_hat_train <- pi_hat[i_train]
-    
-    # Get output for simulated dataset
-    out_sim <- bart_mediate_sim(data_train, data, model_m, model_y,
-                                pi_hat_train, pi_hat,
-                                m0_hat_train, m0_hat,
-                                m1_hat_train, m1_hat,
-                                'phealth', 'logY', 'smoke',
-                                n_iter, burnin)
-    
-    # Get simulated direct/indirect distributions
-    zeta <- out_sim$zeta_samples
-    zeta_train <- zeta[,i_train]
-    zeta_test <- zeta[,i_test]
-    
-    d <- out_sim$d_samples
-    d_train <- d[,i_train]
-    d_test <- d[,i_test]
-    
-    tau <- out_sim$tau_samples
-    tau_train <- tau[,i_train]
-    tau_test <- tau[,i_test]
-    
-    avg_direct    <- rowMeans(zeta_train)
-    avg_indirect  <- rowMeans(d_train * tau_train)
-    indv_direct   <- zeta_test
-    indv_indirect <- d_test * tau_test
-    
-    i1_train <- which(data_train$age < 34 & data_train$race_white == 1)
-    i2_train <- which(data_train$age < 34 & data_train$race_white == 0)
-    i3_train <- which(data_train$age >= 67)
-    i4_train <- which(data_train$age >= 34 & data_train$age < 67 & data_train$race_white == 1)
-    i5_train <- which(data_train$age >= 34 & data_train$age < 67 & data_train$race_white == 0)
-    
-    group1_direct <- rowMeans(zeta_train[,i1_train])
-    group2_direct <- rowMeans(zeta_train[,i2_train])
-    group3_direct <- rowMeans(zeta_train[,i3_train])
-    group4_direct <- rowMeans(zeta_train[,i4_train])
-    group5_direct <- rowMeans(zeta_train[,i5_train])
-    
-    group1_indirect <- rowMeans((d_train * tau_train)[,i1_train])
-    group2_indirect <- rowMeans((d_train * tau_train)[,i2_train])
-    group3_indirect <- rowMeans((d_train * tau_train)[,i3_train])
-    group4_indirect <- rowMeans((d_train * tau_train)[,i4_train])
-    group5_indirect <- rowMeans((d_train * tau_train)[,i5_train])
-    
-    # Get direct/indirect credible intervals
-    avg_direct_interval    <- quantile(avg_direct, probs = c(0.025, 0.975))
-    avg_indirect_interval  <- quantile(avg_indirect, probs = c(0.025, 0.975))
-    indv_direct_interval   <- colQuantiles(indv_direct, probs = c(0.025, 0.975))
-    indv_indirect_interval <- colQuantiles(indv_indirect, probs = c(0.025, 0.975))
-    
-    group1_direct_interval <- quantile(group1_direct, probs = c(0.025, 0.975))
-    group2_direct_interval <- quantile(group2_direct, probs = c(0.025, 0.975))
-    group3_direct_interval <- quantile(group3_direct, probs = c(0.025, 0.975))
-    group4_direct_interval <- quantile(group4_direct, probs = c(0.025, 0.975))
-    group5_direct_interval <- quantile(group5_direct, probs = c(0.025, 0.975))
-    
-    group1_indirect_interval <- quantile(group1_indirect, probs = c(0.025, 0.975))
-    group2_indirect_interval <- quantile(group2_indirect, probs = c(0.025, 0.975))
-    group3_indirect_interval <- quantile(group3_indirect, probs = c(0.025, 0.975))
-    group4_indirect_interval <- quantile(group4_indirect, probs = c(0.025, 0.975))
-    group5_indirect_interval <- quantile(group5_indirect, probs = c(0.025, 0.975))
-    
-    # Mean point estimates
-    avg_direct_mean    <- mean(avg_direct)
-    avg_indirect_mean  <- mean(avg_indirect)
-    indv_direct_mean   <- colMeans(indv_direct)
-    indv_indirect_mean <- colMeans(indv_indirect)
-    
-    group1_direct_mean <- mean(group1_direct)
-    group2_direct_mean <- mean(group2_direct)
-    group3_direct_mean <- mean(group3_direct)
-    group4_direct_mean <- mean(group4_direct)
-    group5_direct_mean <- mean(group5_direct)
-    
-    group1_indirect_mean <- mean(group1_indirect)
-    group2_indirect_mean <- mean(group2_indirect)
-    group3_indirect_mean <- mean(group3_indirect)
-    group4_indirect_mean <- mean(group4_indirect)
-    group5_indirect_mean <- mean(group5_indirect)
-    
-    # Save each interval
-    avg_direct_intervals[i,]     <- avg_direct_interval
-    avg_indirect_intervals[i,]   <- avg_indirect_interval
-    indv_direct_intervals[,,i]   <- indv_direct_interval
-    indv_indirect_intervals[,,i] <- indv_indirect_interval
-    
-    group1_direct_intervals[i,] <- group1_direct_interval
-    group2_direct_intervals[i,] <- group2_direct_interval
-    group3_direct_intervals[i,] <- group3_direct_interval
-    group4_direct_intervals[i,] <- group4_direct_interval
-    group5_direct_intervals[i,] <- group5_direct_interval
-    
-    group1_indirect_intervals[i,] <- group1_indirect_interval
-    group2_indirect_intervals[i,] <- group2_indirect_interval
-    group3_indirect_intervals[i,] <- group3_indirect_interval
-    group4_indirect_intervals[i,] <- group4_indirect_interval
-    group5_indirect_intervals[i,] <- group5_indirect_interval
-    
-    # Save each mean
-    avg_direct_means[i]     <- avg_direct_mean
-    avg_indirect_means[i]   <- avg_indirect_mean
-    indv_direct_means[i,]   <- indv_direct_mean
-    indv_indirect_means[i,] <- indv_indirect_mean
-    
-    group1_direct_means[i] <- group1_direct_mean
-    group2_direct_means[i] <- group2_direct_mean
-    group3_direct_means[i] <- group3_direct_mean
-    group4_direct_means[i] <- group4_direct_mean
-    group5_direct_means[i] <- group5_direct_mean
-    
-    group1_indirect_means[i] <- group1_indirect_mean
-    group2_indirect_means[i] <- group2_indirect_mean
-    group3_indirect_means[i] <- group3_indirect_mean
-    group4_indirect_means[i] <- group4_indirect_mean
-    group5_indirect_means[i] <- group5_indirect_mean
+    # Save replications into a matrix
+    indv_mat[1:nrow(data_test) + nrow(data_test) * (i-1),] <- indv_mat_i
+    subgroup_mat[1:5 + 5 * (i-1),] <- subgroup_mat_i
+    avg_mat[i,] <- avg_mat_i
   }
   
+  
   return(list(
-    avg_direct_intervals = avg_direct_intervals,
-    avg_indirect_intervals = avg_indirect_intervals,
-    indv_direct_intervals = indv_direct_intervals,
-    indv_indirect_intervals = indv_indirect_intervals,
-    group1_direct_intervals = group1_direct_intervals,
-    group2_direct_intervals = group2_direct_intervals,
-    group3_direct_intervals = group3_direct_intervals,
-    group4_direct_intervals = group4_direct_intervals,
-    group5_direct_intervals = group5_direct_intervals,
-    group1_indirect_intervals = group1_indirect_intervals,
-    group2_indirect_intervals = group2_indirect_intervals,
-    group3_indirect_intervals = group3_indirect_intervals,
-    group4_indirect_intervals = group4_indirect_intervals,
-    group5_indirect_intervals = group5_indirect_intervals,
-    avg_direct_means = avg_direct_means,
-    avg_indirect_means = avg_indirect_means,
-    indv_direct_means = indv_direct_means,
-    indv_indirect_means = indv_indirect_means,
-    group1_direct_means = group1_direct_means,
-    group2_direct_means = group2_direct_means,
-    group3_direct_means = group3_direct_means,
-    group4_direct_means = group4_direct_means,
-    group5_direct_means = group5_direct_means,
-    group1_indirect_means = group1_indirect_means,
-    group2_indirect_means = group2_indirect_means,
-    group3_indirect_means = group3_indirect_means,
-    group4_indirect_means = group4_indirect_means,
-    group5_indirect_means = group5_indirect_means
+    individual = indv_mat,
+    subgroups = subgroup_mat,
+    average = avg_mat
   ))
 }
 
+set.seed(123)
+seeds <- sample.int(10e6, 10)
 simulation <- do_simulation(meps, i_train, i_test, model_m, model_y, model_ps,
                             'phealth', 'logY', 'smoke',
                             mu_y_hat_train, zeta_hat_train, d_hat_train,
                             mu_m_hat_train, tau_hat_train, sigma_y_hat, sigma_m_hat,
-                            8000, 4000, 2)
+                            8000, 4000, 10, seeds)
 
 
 
