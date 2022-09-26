@@ -172,12 +172,22 @@ get_ps <- function(data_train, data_test, model_ps) {
 
 
 # MEPS data
-meps <- readRDS("Data/meps_logy.rds")
-meps$smoke <- ifelse(meps$smoke == 2, 0, 1)
+meps <- read.csv("data/meps2011.csv") %>% 
+  filter(totexp > 0) %>% 
+  mutate(logY = log(totexp)) %>% 
+  mutate(smoke = ifelse(smoke == "No", 0, 1)) %>% 
+  select(-totexp) %>% select(logY, everything())
+
+phealth <- meps$phealth
+phealth <- case_when(phealth == "Poor" ~ 1, phealth == "Fair" ~ 2, 
+                     phealth == "Good" ~ 3, phealth == "Very Good" ~ 4, 
+                     phealth == "Excellent" ~ 5)
+meps$phealth <- phealth
+rm(phealth)
 
 # Model for m and y
-model_m <- phealth ~ -1 + age + race_white + inc + bmi + edu + povlev
-model_y <- logY ~ -1 + age + race_white + inc + bmi + edu + povlev + phealth
+model_m <- phealth ~ -1 + age + bmi + edu + income + povlev + region + sex + marital + race + seatbelt
+model_y <- logY ~ -1 + age + bmi + edu + income + povlev + region + sex + marital + race + seatbelt + phealth
 
 # Clever covariates for entire set
 clever_cov <- get_clever_cov(meps, meps, model_m, 'phealth', 'logY', 'smoke')
@@ -185,7 +195,7 @@ m0_hat <- clever_cov$m0_hat
 m1_hat <- clever_cov$m1_hat
 
 # Propensity score for entire set
-model_ps <- smoke ~ age + race_white + inc + bmi + edu + povlev
+model_ps <- smoke ~ age + bmi + edu + income + povlev + region + sex + marital + race + seatbelt
 pi_hat <- get_ps(meps, meps, model_ps)
 
 # Get true values
@@ -211,6 +221,8 @@ avg_indirect_true  <- mean(d_hat * tau_hat)
 indv_direct_true   <- zeta_hat
 indv_indirect_true <- d_hat * tau_hat
 
+subgroup_labels <- c('non-white, age < 32', 'non-white, age ≥ 32', 'white, age < 32',
+                     'white, age ≥ 32, female', 'white, age ≥ 32, male')
 i1 <- which(meps$age < 34 & meps$race_white == 1)
 i2 <- which(meps$age < 34 & meps$race_white == 0)
 i3 <- which(meps$age >= 67)
@@ -222,17 +234,25 @@ group2_direct_true <- mean(indv_direct_true[i2])
 group3_direct_true <- mean(indv_direct_true[i3])
 group4_direct_true <- mean(indv_direct_true[i4])
 group5_direct_true <- mean(indv_direct_true[i5])
+subgroup_direct_true <- data.frame(group = subgroup_labels,
+                          direct = c(group1_direct_true, group2_direct_true,
+                                     group3_direct_true, group4_direct_true,
+                                     group5_direct_true))
 
 group1_indirect_true <- mean(indv_indirect_true[i1])
 group2_indirect_true <- mean(indv_indirect_true[i2])
 group3_indirect_true <- mean(indv_indirect_true[i3])
 group4_indirect_true <- mean(indv_indirect_true[i4])
 group5_indirect_true <- mean(indv_indirect_true[i5])
+subgroup_indirect_true <- data.frame(group = subgroup_labels,
+                       indirect = c(group1_indirect_true, group2_indirect_true,
+                                    group3_indirect_true, group4_indirect_true,
+                                    group5_indirect_true))
 
 
 # Make training & testing set
 n <- nrow(meps)
-set.seed(1)
+set.seed(123)
 i_train <- sample(1:nrow(meps), floor(n/2))
 i_test <- c(1:nrow(meps))[-i_train]
 
@@ -248,6 +268,9 @@ do_simulation <- function(data, i_train, i_test, model_m, model_y, model_ps,
                           mediator_name, outcome_name, treat_name,
                           mu_y_hat_train, zeta_hat_train, d_hat_train, 
                           mu_m_hat_train, tau_hat_train, sigma_y_hat, sigma_m_hat,
+                          avg_direct_true, avg_indirect_true,
+                          indv_direct_true, indv_indirect_true,
+                          subgroup_direct_true, subgroup_indirect_true,
                           n_iter, burnin, n_reps, seeds) {
   
   # Get training and testing set
@@ -256,14 +279,14 @@ do_simulation <- function(data, i_train, i_test, model_m, model_y, model_ps,
   
   # Store results
   colnames_indv      <- c('seed', 'subj_id', 'zeta_mean', 'zeta_lower',
-                          'zeta_upper', 'delta_mean', 'delta_lower',
-                          'delta_upper')
+                          'zeta_upper', 'zeta_catch', 'delta_mean', 'delta_lower',
+                          'delta_upper', 'delta_catch')
   colnames_subgroup <- c('seed', 'group', 'zeta_mean', 'zeta_lower',
-                          'zeta_upper', 'delta_mean', 'delta_lower',
-                          'delta_upper')
+                          'zeta_upper', 'zeta_catch', 'delta_mean', 'delta_lower',
+                          'delta_upper', 'delta_catch')
   colnames_avg       <- c('seed', 'zeta_mean', 'zeta_lower',
-                          'zeta_upper', 'delta_mean', 'delta_lower',
-                          'delta_upper')
+                          'zeta_upper', 'zeta_catch', 'delta_mean', 'delta_lower',
+                          'delta_upper', 'delta_catch')
   
   indv_mat      <- matrix(NA, nrow = n_reps * nrow(data_test), 
                           ncol = length(colnames_indv),
@@ -383,24 +406,48 @@ do_simulation <- function(data, i_train, i_test, model_m, model_y, model_ps,
       subgroup_direct_mean <- colMeans(subgroup_direct)
       subgroup_indirect_mean <- colMeans(subgroup_indirect)
       
+      # Catch T/F
+      avg_direct_catch <- as.numeric(avg_direct_true >= avg_direct_interval[1] &
+                                     avg_direct_true <= avg_direct_interval[2])
+      avg_indirect_catch <- as.numeric(avg_indirect_true >= avg_indirect_interval[1] &
+                                       avg_indirect_true <= avg_indirect_interval[2])
+      
+      indv_direct_catch <- unlist(lapply(1:length(indv_direct_true), 
+               function(i) (indv_direct_true[i] >= indv_direct_interval[i,1]) &
+                 (indv_direct_true[i] <= indv_direct_interval[i,2])))
+      indv_indirect_catch <- unlist(lapply(1:length(indv_indirect_true), 
+           function(i) (indv_indirect_true[i] >= indv_indirect_interval[i,1]) &
+             (indv_indirect_true[i] <= indv_indirect_interval[i,2])))
+      
+      subgroup_direct_catch <- unlist(lapply(1:nrow(subgroup_direct_true), 
+       function(i) (subgroup_direct_true[i,2] >= subgroup_direct_interval[i,1]) &
+         (subgroup_direct_true[i,2] <= subgroup_direct_interval[i,2])))
+      subgroup_indirect_catch <- unlist(lapply(1:nrow(subgroup_indirect_true), 
+       function(i) (subgroup_indirect_true[i,2] >= subgroup_indirect_interval[i,1]) &
+         (subgroup_indirect_true[i,2] <= subgroup_indirect_interval[i,2])))
+      
+      
       # Saving
       # Individual
       indv_mat_i <- cbind(rep(seeds[i], nrow(data_test)), 1:nrow(data_test),
                           indv_direct_mean, indv_direct_interval,
-                          indv_indirect_mean, indv_indirect_interval)
+                          indv_direct_catch, indv_indirect_mean,
+                          indv_indirect_interval, indv_indirect_catch)
       colnames(indv_mat_i) <- colnames_indv
       saveRDS(indv_mat_i, file_name_indv)
       
       # Subgroup
       subgroup_mat_i <- cbind(rep(seeds[i], 5), 1:5,
                               subgroup_direct_mean, subgroup_direct_interval,
-                              subgroup_indirect_mean, subgroup_indirect_interval)
+                              subgroup_direct_catch, subgroup_indirect_mean,
+                              subgroup_indirect_interval, subgroup_indirect_catch)
       colnames(subgroup_mat_i) <- colnames_subgroup
       saveRDS(subgroup_mat_i, file_name_subgroup)
       
       # Average
       avg_mat_i <- c(seeds[i], avg_direct_mean, avg_direct_interval,
-                     avg_indirect_mean, avg_indirect_interval)
+                     avg_direct_catch, avg_indirect_mean, avg_indirect_interval,
+                     avg_indirect_catch)
       names(avg_mat_i) <- colnames_avg
       saveRDS(avg_mat_i, file_name_avg)
     }
@@ -419,53 +466,19 @@ do_simulation <- function(data, i_train, i_test, model_m, model_y, model_ps,
   ))
 }
 
-set.seed(123)
-seeds <- sample.int(10e6, 10)
+seeds <- sample.int(10e6, 200)[1:10]
 simulation <- do_simulation(meps, i_train, i_test, model_m, model_y, model_ps,
                             'phealth', 'logY', 'smoke',
                             mu_y_hat_train, zeta_hat_train, d_hat_train,
-                            mu_m_hat_train, tau_hat_train, sigma_y_hat, sigma_m_hat,
+                            mu_m_hat_train, tau_hat_train,
+                            sigma_y_hat, sigma_m_hat, 
+                            avg_direct_true, avg_indirect_true,
+                            indv_direct_true[i_test], indv_indirect_true[i_test],
+                            subgroup_direct_true, subgroup_indirect_true,
                             8000, 4000, 10, seeds)
 
 
 
 
-
-
-
-
-
-# coverage_avg_direct <- rep(NA, 5)
-# coverage_avg_indirect <- rep(NA, 5)
-# coverage_indirect_subgroup1 <- rep(NA, 5)
-# coverage_indirect_subgroup2 <- rep(NA, 5)
-# coverage_indirect_subgroup3 <- rep(NA, 5)
-# coverage_indirect_subgroup4 <- rep(NA, 5)
-# coverage_indirect_subgroup5 <- rep(NA, 5)
-# for (i in 1:5){
-#   in_avg_direct <- (avg_direct_true >= simulation$avg_direct_intervals[i,1]) &
-#                    (avg_direct_true <= simulation$avg_direct_intervals[i,2])
-#   in_avg_indirect <- (avg_indirect_true >= simulation$avg_indirect_intervals[i,1]) &
-#                     (avg_indirect_true <= simulation$avg_indirect_intervals[i,2])
-#   in_indirect_subgroup1 <- (group1_indirect_true >= simulation$group1_indirect_intervals[i,1]) &
-#                          (group1_indirect_true <= simulation$group1_indirect_intervals[i,2])
-#   in_indirect_subgroup2 <- (group2_indirect_true >= simulation$group2_indirect_intervals[i,1]) &
-#                          (group2_indirect_true <= simulation$group2_indirect_intervals[i,2]) 
-#   in_indirect_subgroup3 <- (group3_indirect_true >= simulation$group3_indirect_intervals[i,1]) &
-#                          (group3_indirect_true <= simulation$group3_indirect_intervals[i,2])
-#   in_indirect_subgroup4 <- (group4_indirect_true >= simulation$group4_indirect_intervals[i,1]) &
-#                            (group4_indirect_true <= simulation$group4_indirect_intervals[i,2])
-#   in_indirect_subgroup5 <- (group5_indirect_true >= simulation$group5_indirect_intervals[i,1]) &
-#                            (group5_indirect_true <= simulation$group5_indirect_intervals[i,2])
-#   
-#   coverage_avg_direct[i] = in_avg_direct
-#   coverage_avg_indirect[i] = in_avg_indirect
-#   coverage_indirect_subgroup1[i] = in_indirect_subgroup1
-#   coverage_indirect_subgroup2[i] = in_indirect_subgroup2
-#   coverage_indirect_subgroup3[i] = in_indirect_subgroup3
-#   coverage_indirect_subgroup4[i] = in_indirect_subgroup4
-#   coverage_indirect_subgroup5[i] = in_indirect_subgroup5
-#   
-# }
 
 
