@@ -256,10 +256,10 @@ do_simulation <- function(data, i_train, i_test, model_m, model_y, model_ps,
   
   for (i in 1:n_reps) {
     
-    file_name_indv <- paste0('/Volumes/bb external storage/Simulation/indv_seed', seeds[i], '.rds')
-    file_name_subgroup <- paste0('/Volumes/bb external storage/Simulation/subgroup_seed', seeds[i], '.rds')
-    file_name_avg <- paste0('/Volumes/bb external storage/Simulation/avg_seed', seeds[i], '.rds')
-    file_name_tree_subgroup <- paste0('/Volumes/bb external storage/Simulation/tree_subgroup_seed', seeds[i], '.rds')
+    file_name_indv <- paste0('Simulation/indv_seed', seeds[i], '.rds')
+    file_name_subgroup <- paste0('Simulation/subgroup_seed', seeds[i], '.rds')
+    file_name_avg <- paste0('Simulation/avg_seed', seeds[i], '.rds')
+    file_name_tree_subgroup <- paste0('Simulation/tree_subgroup_seed', seeds[i], '.rds')
     
     if (file.exists(file_name_indv) & file.exists(file_name_subgroup) &
         file.exists(file_name_avg) & file.exists(file_name_tree_subgroup)) {
