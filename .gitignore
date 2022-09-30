@@ -53,3 +53,5 @@ rsconnect/
 # Some saved files not for GitHub
 bart_m0_ordinal.rds
 bart_m1_ordinal.rds
+
+Data/meps_fit.rds
