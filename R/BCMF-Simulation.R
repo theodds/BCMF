@@ -116,6 +116,7 @@ bart_mediate_sim <- function(data_train, data_test, model_m, model_y,
 
     # Unscale
     mu_y_unscale <- mean(Y) + (mu_y_test * sd(Y)) - mean(m) / sd(m) * d_test * sd(Y)
+    # mu_y_unscale <- mean(Y) + (mu_y_test * sd(Y)) - mean(m) * d_test
     zeta_unscale <- zeta_test * sd(Y)
     d_unscale <- d_test * sd(Y) / sd(m)
     mu_m_unscale <- mean(m) + (mu_m_test * sd(m))
@@ -523,6 +524,26 @@ simulation <- do_simulation(meps, i_train, i_test, model_m, model_y, model_ps,
 
 
 
+# Average
+mean(simulation$average$zeta_catch)
+mean(simulation$average$delta_catch)
 
+# Individual
+simulation$individual %>% group_by(seed) %>%
+  summarize(zeta_coverage = mean(zeta_catch))
 
+indv_cov <- simulation$individual %>% group_by(subj_id) %>%
+            summarize(zeta_coverage = mean(zeta_catch),
+                      delta_coverage = mean(delta_catch))
+hist(indv_cov$zeta_coverage)
+hist(indv_cov$delta_coverage)
 
+# Fixed Subgroups
+simulation$subgroups %>% group_by(group) %>%
+  summarize(zeta_coverage = mean(as.numeric(zeta_catch)),
+            delta_coverage = mean(as.numeric(delta_catch)))
+
+# Varying Subgroups
+simulation$tree_subgroups %>% group_by(seed) %>%
+  summarize(zeta_coverage = mean(zeta_catch),
+            delta_coverage = mean(delta_catch))

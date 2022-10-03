@@ -63,9 +63,9 @@ formula_m <- phealth ~ age + bmi + edu + income + povlev + region + sex + marita
 opts <- Opts(num_burn = 2000, num_thin = 1, num_save = 2000, update_s = FALSE, update_sigma_mu = FALSE)
 
 set.seed(digest::digest2int("trying meps 3"))
-sim_fit <- softbart_bcmf(formula_y = formula_y, formula_m = formula_m, 
-                         trt = fake_meps$smoke, data = fake_meps, 
-                         test_data = fake_meps, 
+sim_fit <- softbart_bcmf(formula_y = formula_y, formula_m = formula_m,
+                         trt = fake_meps$smoke, data = fake_meps,
+                         test_data = fake_meps,
                          opts = opts)
 
 ## Checking model fits ----
@@ -85,7 +85,7 @@ mean((fake_meps$true_zeta >= lcl_zeta) & (fake_meps$true_zeta <= ucl_zeta))
 
 meps_for_subgroup <- fake_meps %>% mutate(delta_hat = colMeans(sim_fit$delta_train))
 
-sim_rpart <- rpart(delta ~ age + bmi + edu + income + povlev + region + sex + 
+sim_rpart <- rpart(delta ~ age + bmi + edu + income + povlev + region + sex +
                      marital + race + seatbelt, data = meps_for_subgroup)
 
 meps_for_subgroup$subgroup <- as.numeric(as.factor(sim_rpart$where))
@@ -98,14 +98,14 @@ get_subgroup <- function(i) {
   delta_samples <- rowMeans(sim_fit$delta_test[,idx])
   lower <- LCL(delta_samples)
   upper <- UCL(delta_samples)
-  return(list(delta_hat = mean(delta_samples), LCL = lower, UCL = upper, 
+  return(list(delta_hat = mean(delta_samples), LCL = lower, UCL = upper,
               subgroup = i))
 }
 
 get_subgroup_samples <- function(i) {
   idx <- which(meps_for_subgroup$subgroup == i)
   delta_samples <- rowMeans(sim_fit$delta_test[,idx]) - rowMeans(sim_fit$delta_test)
-  return(list(delta_samples = delta_samples, subgroup = i, 
+  return(list(delta_samples = delta_samples, subgroup = i,
               iteration = 1:length(delta_samples)))
 }
 
@@ -113,7 +113,7 @@ subgroup_inference <- map_df(1:max(meps_for_subgroup$subgroup), get_subgroup) %>
   left_join(true_subgroup_deltas) %>%
   mutate(catch = (true_delta >= LCL) & (true_delta <= UCL))
 
-subgroup_samples <- 
+subgroup_samples <-
   map_df(1:max(meps_for_subgroup$subgroup), get_subgroup_samples)
 
 print(subgroup_inference)

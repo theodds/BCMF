@@ -127,12 +127,11 @@ model_y <- logY ~ -1 + age + bmi + edu + income + povlev + region + sex + marita
 
 # Preprocess data
 set.seed(123)
-meps <- read.csv("data/meps2011.csv") %>% 
-  filter(totexp > 0 & bmi > 0) %>% 
-  mutate(logY = log(totexp)) %>% 
-  mutate(smoke = ifelse(smoke == "No", 0, 1)) %>% 
+meps <- read.csv("data/meps2011.csv") %>%
+  filter(totexp > 0 & bmi > 0) %>%
+  mutate(logY = log(totexp)) %>%
+  mutate(smoke = ifelse(smoke == "No", 0, 1)) %>%
   select(-totexp) %>% select(logY, everything())
-
 phealth <- meps$phealth
 phealth <- case_when(phealth == "Poor" ~ 1, phealth == "Fair" ~ 2, 
                      phealth == "Good" ~ 3, phealth == "Very Good" ~ 4, 
@@ -164,19 +163,21 @@ out_var_coef <- bart_mediate(meps, model_m, model_y, pi_hat, m0_hat,
                              m1_hat, 'phealth', 'logY', 'smoke', 8000, 4000)
 
 # Traceplots
-plot(out_var_coef$avg_direct)
-plot(out_var_coef$avg_indirect)
-plot(out_var_coef$indv_direct[,1])
-plot(out_var_coef$indv_indirect[,1])
+avg_direct <- rowMeans(out_var_coef$zeta_samples)
+avg_indirect <- rowMeans(out_var_coef$tau_samples * out_var_coef$d_samples)
+indv_direct <- out_var_coef$zeta_samples
+indv_indirect <- out_var_coef$d_samples * out_var_coef$tau_samples
+plot(avg_direct)
+plot(avg_indirect)
 
 # Histograms
-plot_avg_zeta <- ggplot(data.frame(avg_zeta = out_var_coef$avg_direct), aes(x = avg_zeta)) +
+plot_avg_zeta <- ggplot(data.frame(avg_zeta = avg_direct), aes(x = avg_zeta)) +
   geom_histogram(bins = 40, color = 'white', fill = 'cadetblue3') +
   xlab(TeX('$\\bar{\\zeta}$')) + ylab("Frequency") + theme_bw() +
   theme(text = element_text(family = "Times New Roman")) +
   theme(axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)))
 
-plot_avg_delta <- ggplot(data.frame(avg_delta = out_var_coef$avg_indirect), aes(x = avg_delta)) +
+plot_avg_delta <- ggplot(data.frame(avg_delta = avg_indirect), aes(x = avg_delta)) +
   geom_histogram(bins = 40, color = 'white', fill = 'coral1') +
   xlab(TeX('$\\bar{\\delta}$')) + ylab("") + theme_bw() +
   theme(text = element_text(family = "Times New Roman")) +
@@ -192,8 +193,8 @@ get_quantiles <- function(samples, probs) {
   return (quantiles)
 }
 
-zeta_quantiles <- get_quantiles(out_var_coef$indv_direct, probs = c(0.025, 0.5, 0.975))
-delta_quantiles <- get_quantiles(out_var_coef$indv_indirect, probs = c(0.025, 0.5, 0.975))
+zeta_quantiles <- get_quantiles(indv_direct, probs = c(0.025, 0.5, 0.975))
+delta_quantiles <- get_quantiles(indv_indirect, probs = c(0.025, 0.5, 0.975))
 
 df_zeta_q <- data.frame(
   index = 1:nrow(zeta_quantiles),
@@ -237,35 +238,43 @@ projection_tree <- function(data, model_y, samples) {
 }
 
 meps_post <- meps %>%
-  mutate(delta_hat = colMeans(out_var_coef$indv_indirect),
-         zeta_hat = colMeans(out_var_coef$indv_direct)) %>%
+  mutate(delta_hat = colMeans(indv_indirect),
+         zeta_hat = colMeans(indv_direct)) %>%
   select(age, bmi, edu, income, povlev, region, sex, marital, race, seatbelt, delta_hat, zeta_hat)
 
 rpart.plot(rpart(delta_hat ~ . - zeta_hat, data = meps_post, 
                  control = rpart.control(cp = 0.03)),
            family = 'Times New Roman', nn.family = 'Times New Roman')
 
-subgroup1 <- meps_post %>% filter(race != 'White' & age < 34)
-subgroup2 <- meps_post %>% filter(race != 'White' & age >= 34)
-subgroup3 <- meps_post %>% filter(race == 'White' & age < 32)
-subgroup4 <- meps_post %>% filter(race == 'White' & age >= 32 & sex == 'Female')
-subgroup5 <- meps_post %>% filter(race == 'White' & age >= 32 & sex == 'Male')
+# subgroup1 <- meps_post %>% filter(race != 'White' & age < 34)
+# subgroup2 <- meps_post %>% filter(race != 'White' & age >= 34)
+# subgroup3 <- meps_post %>% filter(race == 'White' & age < 32)
+# subgroup4 <- meps_post %>% filter(race == 'White' & age >= 32 & sex == 'Female')
+# subgroup5 <- meps_post %>% filter(race == 'White' & age >= 32 & sex == 'Male')
 
-plot(NULL, xlim = c(-0.01, 0.16), ylim = c(0, 60), ylab = 'Density', xlab = 'delta')
+subgroup1 <- meps_post %>% filter(age < 34 & race == 'White')
+subgroup2 <- meps_post %>% filter(age < 34 & race != 'White')
+subgroup3 <- meps_post %>% filter(age >= 67)
+subgroup4 <- meps_post %>% filter(age >= 34 & age < 67 & race == 'White')
+subgroup5 <- meps_post %>% filter(age >= 34 & age < 67 & race != 'White')
+
+plot(NULL, xlim = c(-0.02, 0.13), ylim = c(0, 60), ylab = 'Density', xlab = 'delta')
 lines(density(subgroup1$delta_hat), col = 'blue')
 lines(density(subgroup2$delta_hat), col = 'blue', lty = 2)
 lines(density(subgroup3$delta_hat), col = 'green')
 lines(density(subgroup4$delta_hat), col = 'red')
 lines(density(subgroup5$delta_hat), col = 'red', lty = 2)
 legend('topright',
-       legend = c('non-white & age < 34', 'non-white and age >= 34', 'white & age < 32',
-                  'white & age >= 32 & female', 'white & age >= 32 & male'),
+       legend = c('white, age < 34', 'non-white, age < 34', 'age ≥ 67',
+                  'white, 34 ≤ age < 67', 'non-white, 34 ≤ age < 67'),
        col = c('blue', 'blue', 'green', 'red', 'red'),
        lty = c(1,2,1,1,2), cex = 0.7)
 
 # Half-eye plot
-subgroup_labels <- c('non-white, age < 34', 'non-white, age ≥ 34', 'white, age < 32',
-                     'white, age ≥ 32, female', 'white, age ≥ 32, male')
+# subgroup_labels <- c('non-white, age < 34', 'non-white, age ≥ 34', 'white, age < 32',
+#                      'white, age ≥ 32, female', 'white, age ≥ 32, male')
+subgroup_labels <- c('white, age < 34', 'non-white, age < 34', 'age ≥ 67',
+                     'white, 34 ≤ age < 67', 'non-white, 34 ≤ age < 67')
 df_subgroups = data.frame(
   subgroup = c(rep(subgroup_labels[1], nrow(subgroup1)),
                rep(subgroup_labels[2], nrow(subgroup2)),
@@ -321,7 +330,7 @@ for(i in 1:4000) {
   project_gam <- gam(delta_hat ~ s(age, k = 10) + s(bmi, k = 10) + s(edu, k = 10) +
                      s(income, k = 10) + s(povlev, k = 10) + region + sex + 
                      marital + race + seatbelt,
-                     data = meps_post %>% mutate(delta_hat = out_var_coef$indv_indirect[i,]))
+                     data = meps_post %>% mutate(delta_hat = indv_indirect[i,]))
   
   # Constraint for binary/categorical variables to sum to 0
   coefs <- coef(project_gam)
@@ -371,10 +380,35 @@ marital_df <- do.call(rbind, marital_list)
 race_df <- do.call(rbind, race_list)
 seatbelt_df <- do.call(rbind, seatbelt_list)
 
+saveRDS(smooth_age_df, 'smooth_age_df.rds')
+saveRDS(smooth_bmi_df, 'smooth_bmi_df.rds')
+saveRDS(smooth_edu_df, 'smooth_edu_df.rds')
+saveRDS(smooth_income_df, 'smooth_income_df.rds')
+saveRDS(smooth_povlev_df, 'smooth_povlev_df.rds')
+saveRDS(region_df, 'region_df.rds')
+saveRDS(sex_df, 'sex_df.rds')
+saveRDS(marital_df, 'marital_df.rds')
+saveRDS(race_df, 'race_df.rds')
+saveRDS(seatbelt_df, 'seatbelt_df.rds')
+
+readRDS('smooth_age_df.rds')
+readRDS('smooth_bmi_df.rds')
+readRDS('smooth_edu_df.rds')
+readRDS('smooth_income_df.rds')
+readRDS('smooth_povlev_df.rds')
+readRDS('region_df.rds')
+readRDS('sex_df.rds')
+readRDS('marital_df.rds')
+readRDS('race_df.rds')
+readRDS('seatbelt_df.rds')
+
 smooth_age_summary <- smooth_age_df %>%
   group_by(x) %>% summarize(mu = mean(y), LCL = quantile(y, 0.025),
                             UCL = quantile(y, 0.975))
 smooth_bmi_summary <- smooth_bmi_df %>%
+  group_by(x) %>% summarize(mu = mean(y), LCL = quantile(y, 0.025),
+                            UCL = quantile(y, 0.975))
+smooth_edu_summary <- smooth_edu_df %>%
   group_by(x) %>% summarize(mu = mean(y), LCL = quantile(y, 0.025),
                             UCL = quantile(y, 0.975))
 smooth_income_summary <- smooth_income_df %>%
@@ -399,6 +433,11 @@ plot_bmi <- ggplot(smooth_bmi_summary, aes(x = x, y = mu, ymin = LCL, ymax = UCL
   geom_hline(yintercept = 0) + xlab('bmi') + ylab('s(bmi)') + theme_bw() +
   theme(text = element_text(family = "Times New Roman"))
 
+plot_edu <- ggplot(smooth_edu_summary, aes(x = x, y = mu, ymin = LCL, ymax = UCL)) +
+  geom_line(size = 1, lty = 2) + geom_ribbon(alpha = 0.5, fill = 'cornflowerblue') +
+  geom_hline(yintercept = 0) + xlab('edu') + ylab('s(edu)') + theme_bw() +
+  theme(text = element_text(family = "Times New Roman"))
+
 plot_income <- ggplot(smooth_income_summary, aes(x = x, y = mu, ymin = LCL, ymax = UCL)) +
   geom_line(size = 1, lty = 2) + geom_ribbon(alpha = 0.5, fill = 'cornflowerblue') +
   geom_hline(yintercept = 0) + xlab('income') + ylab('s(income)') + theme_bw() +
@@ -409,7 +448,7 @@ plot_povlev <- ggplot(smooth_povlev_summary, aes(x = x, y = mu, ymin = LCL, ymax
   geom_hline(yintercept = 0) + xlab('poverty level') + ylab('s(poverty level)') + theme_bw() +
   theme(text = element_text(family = "Times New Roman"))
 
-plot_grid(plot_age, plot_bmi, plot_income, plot_povlev, align = 'vh')
+plot_grid(plot_age, plot_bmi, plot_edu, plot_income, plot_povlev, align = 'vh')
 
 # Boxplots for binary/categorical coefficients
 
@@ -429,8 +468,8 @@ ggplot(boxplot_coefs, aes(y = factor(category, level = level_order), x = coefs, 
   geom_hline(yintercept = c(6.5, 11.5, 15.5, 17.5), lty = 2, col = 'darkgray', size = 0.4)
 
 
-q <- region_df %>% arrange(factor(category, levels = c('regionWest', 'regionSouth', 'regionMidwest', 'regionNortheast')))
-ggplot(q, aes(y=category, x=coefs)) + geom_boxplot()
+# q <- region_df %>% arrange(factor(category, levels = c('regionWest', 'regionSouth', 'regionMidwest', 'regionNortheast')))
+# ggplot(q, aes(y=category, x=coefs)) + geom_boxplot()
 
 
 ## R^2 ----
@@ -452,8 +491,8 @@ r_sq <- function(samples, samples_proj) {
 }
 
 # Tree
-proj_tree_delta <- projection_tree(meps, model_y, out_var_coef$indv_indirect)
-r_sq_tree <- r_sq(out_var_coef$indv_indirect, proj_tree_delta)
+proj_tree_delta <- projection_tree(meps, model_y, indv_indirect)
+r_sq_tree <- r_sq(indv_indirect, proj_tree_delta)
 
 hist(r_sq_tree$r2)
 abline(v = r_sq_tree$r2_mean, col = 'red')
@@ -466,8 +505,8 @@ plot_r2_tree <- ggplot(data.frame(r_sq = r_sq_tree$r2), aes(x = r_sq)) +
   theme(axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)))
 
 # GAM
-proj_gam_delta <- projection_gam(meps, out_var_coef$indv_indirect)
-r_sq_gam <- r_sq(out_var_coef$indv_indirect, proj_gam_delta)
+proj_gam_delta <- projection_gam(meps, indv_indirect)
+r_sq_gam <- r_sq(indv_indirect, proj_gam_delta)
 
 hist(r_sq_gam$r2)
 abline(v = r_sq_gam$r2_mean, col = 'red')
