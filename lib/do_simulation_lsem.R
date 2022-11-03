@@ -188,16 +188,17 @@ do_simulation_lsem <- function(data, i_train, i_test,
     delta_bar_ll <- colMeans(indv_delta_ll)
     se_zeta_ll <- apply(indv_zeta_ll, 2, sd)
     se_delta_ll <- apply(indv_delta_ll, 2, sd)
-    t_stat <- qt(0.975, nrow(data_train) - 1)
-    indv_zeta_interval_ll  <- t(apply(cbind(zeta_bar_ll + t_stat * se_zeta_ll, zeta_bar_ll - t_stat * se_zeta_ll), 1, sort))
-    indv_delta_interval_ll <- t(apply(cbind(delta_bar_ll - t_stat * se_delta_ll, delta_bar_ll + t_stat * se_delta_ll), 1, sort))
-    avg_zeta_interval_ll   <- mean(avg_zeta_ll) + c(-1, 1) * t_stat * sd(avg_zeta_ll)
-    avg_delta_interval_ll  <- mean(avg_delta_ll) + c(-1, 1) * t_stat * sd(avg_delta_ll)
+    t_stat_train <- qt(0.975, nrow(data_train) - 1)
+    t_stat_test <- qt(0.975, nrow(data_test) - 1)
+    indv_zeta_interval_ll  <- t(apply(cbind(zeta_bar_ll + t_stat_test * se_zeta_ll, zeta_bar_ll - t_stat_test * se_zeta_ll), 1, sort))
+    indv_delta_interval_ll <- t(apply(cbind(delta_bar_ll - t_stat_test * se_delta_ll, delta_bar_ll + t_stat_test * se_delta_ll), 1, sort))
+    avg_zeta_interval_ll   <- mean(avg_zeta_ll) + c(-1, 1) * t_stat_train * sd(avg_zeta_ll)
+    avg_delta_interval_ll  <- mean(avg_delta_ll) + c(-1, 1) * t_stat_train * sd(avg_delta_ll)
     
     se_zeta_subgroup_ll <- apply(subgroup_zeta_ll, 2, sd)
     se_delta_subgroup_ll <- apply(subgroup_delta_ll, 2, sd)
-    subgroup_zeta_interval_ll <- t(apply(cbind(colMeans(subgroup_zeta_ll) + t_stat * se_zeta_subgroup_ll, colMeans(subgroup_zeta_ll) - t_stat * se_zeta_subgroup_ll), 1, sort))
-    subgroup_delta_interval_ll <- t(apply(cbind(colMeans(subgroup_delta_ll) + t_stat * se_delta_subgroup_ll, colMeans(subgroup_delta_ll) - t_stat * se_delta_subgroup_ll), 1, sort))
+    subgroup_zeta_interval_ll <- t(apply(cbind(colMeans(subgroup_zeta_ll) + t_stat_train * se_zeta_subgroup_ll, colMeans(subgroup_zeta_ll) - t_stat_train * se_zeta_subgroup_ll), 1, sort))
+    subgroup_delta_interval_ll <- t(apply(cbind(colMeans(subgroup_delta_ll) + t_stat_train * se_delta_subgroup_ll, colMeans(subgroup_delta_ll) - t_stat_train * se_delta_subgroup_ll), 1, sort))
     
     # Mean estimates
     indv_zeta_mean_ll  <- colMeans(indv_zeta_ll)
@@ -321,15 +322,15 @@ do_simulation_lsem <- function(data, i_train, i_test,
     delta_bar_bl <- colMeans(indv_delta_bl)
     se_zeta_bl <- apply(indv_zeta_ll, 2, sd)
     se_delta_bl <- apply(indv_delta_ll, 2, sd)
-    indv_zeta_interval_bl  <- t(apply(cbind(zeta_bar_bl + t_stat * se_zeta_bl, zeta_bar_bl - t_stat * se_zeta_bl), 1, sort))
-    indv_delta_interval_bl <- t(apply(cbind(delta_bar_bl - t_stat * se_delta_bl, delta_bar_bl + t_stat * se_delta_bl), 1, sort))
-    avg_zeta_interval_bl   <- mean(avg_zeta_bl) + c(-1, 1) * t_stat * sd(avg_zeta_bl)
-    avg_delta_interval_bl  <- mean(avg_delta_bl) + c(-1, 1) * t_stat * sd(avg_delta_bl)
+    indv_zeta_interval_bl  <- t(apply(cbind(zeta_bar_bl + t_stat_test * se_zeta_bl, zeta_bar_bl - t_stat_test * se_zeta_bl), 1, sort))
+    indv_delta_interval_bl <- t(apply(cbind(delta_bar_bl - t_stat_test * se_delta_bl, delta_bar_bl + t_stat_test * se_delta_bl), 1, sort))
+    avg_zeta_interval_bl   <- mean(avg_zeta_bl) + c(-1, 1) * t_stat_train * sd(avg_zeta_bl)
+    avg_delta_interval_bl  <- mean(avg_delta_bl) + c(-1, 1) * t_stat_train * sd(avg_delta_bl)
     
     se_zeta_subgroup_bl <- apply(subgroup_zeta_bl, 2, sd)
     se_delta_subgroup_bl <- apply(subgroup_delta_bl, 2, sd)
-    subgroup_zeta_interval_bl <- t(apply(cbind(colMeans(subgroup_zeta_bl) + t_stat * se_zeta_subgroup_bl, colMeans(subgroup_zeta_bl) - t_stat * se_zeta_subgroup_bl), 1, sort))
-    subgroup_delta_interval_bl <- t(apply(cbind(colMeans(subgroup_delta_bl) + t_stat * se_delta_subgroup_bl, colMeans(subgroup_delta_bl) - t_stat * se_delta_subgroup_bl), 1, sort))
+    subgroup_zeta_interval_bl <- t(apply(cbind(colMeans(subgroup_zeta_bl) + t_stat_train * se_zeta_subgroup_bl, colMeans(subgroup_zeta_bl) - t_stat_train * se_zeta_subgroup_bl), 1, sort))
+    subgroup_delta_interval_bl <- t(apply(cbind(colMeans(subgroup_delta_bl) + t_stat_train * se_delta_subgroup_bl, colMeans(subgroup_delta_bl) - t_stat_train * se_delta_subgroup_bl), 1, sort))
     
     # Mean estimates
     indv_zeta_mean_bl  <- colMeans(indv_zeta_bl)
@@ -418,6 +419,6 @@ do_simulation_lsem <- function(data, i_train, i_test,
     subgroup_lsem_lsem = subgroup_df_ll,
     individual_bart_lsem = indv_df_bl,
     average_bart_lsem = avg_df_bl,
-    subgroup_bart_lsem = subgroup_df_bl,
+    subgroup_bart_lsem = subgroup_df_bl
   ))
 }
