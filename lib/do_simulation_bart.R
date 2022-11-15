@@ -32,28 +32,28 @@ do_simulation_bart <- function(data, i_train, i_test,
                                'delta_upper', 'delta_len', 'delta_true',
                                'delta_catch')
   
-  # BART/BART
-  indv_df_bb      <- data.frame(matrix(NA, nrow = n_reps * nrow(data_test),
-                                       ncol = length(colnames_indv),
-                                       dimnames = list(c(), colnames_indv)))
-  subgroup_df_bb <- data.frame(matrix(NA, nrow = n_reps * 5,
-                                      ncol = length(colnames_subgroup),
-                                      dimnames = list(c(), colnames_subgroup)))
-  avg_df_bb       <- data.frame(matrix(NA, nrow = n_reps,
-                                       ncol = length(colnames_avg),
-                                       dimnames = list(c(), colnames_avg)))
-  tree_subgroups_list_bb <- list()
-  
-  # LSEM/BART
-  indv_df_lb      <- data.frame(matrix(NA, nrow = n_reps * nrow(data_test),
-                                       ncol = length(colnames_indv),
-                                       dimnames = list(c(), colnames_indv)))
-  subgroup_df_lb <- data.frame(matrix(NA, nrow = n_reps * 5,
-                                      ncol = length(colnames_subgroup),
-                                      dimnames = list(c(), colnames_subgroup)))
-  avg_df_lb       <- data.frame(matrix(NA, nrow = n_reps,
-                                       ncol = length(colnames_avg),
-                                       dimnames = list(c(), colnames_avg)))
+  # # BART/BART
+  # indv_df_bb      <- data.frame(matrix(NA, nrow = n_reps * nrow(data_test),
+  #                                      ncol = length(colnames_indv),
+  #                                      dimnames = list(c(), colnames_indv)))
+  # subgroup_df_bb <- data.frame(matrix(NA, nrow = n_reps * 5,
+  #                                     ncol = length(colnames_subgroup),
+  #                                     dimnames = list(c(), colnames_subgroup)))
+  # avg_df_bb       <- data.frame(matrix(NA, nrow = n_reps,
+  #                                      ncol = length(colnames_avg),
+  #                                      dimnames = list(c(), colnames_avg)))
+  # tree_subgroups_list_bb <- list()
+  # 
+  # # LSEM/BART
+  # indv_df_lb      <- data.frame(matrix(NA, nrow = n_reps * nrow(data_test),
+  #                                      ncol = length(colnames_indv),
+  #                                      dimnames = list(c(), colnames_indv)))
+  # subgroup_df_lb <- data.frame(matrix(NA, nrow = n_reps * 5,
+  #                                     ncol = length(colnames_subgroup),
+  #                                     dimnames = list(c(), colnames_subgroup)))
+  # avg_df_lb       <- data.frame(matrix(NA, nrow = n_reps,
+  #                                      ncol = length(colnames_avg),
+  #                                      dimnames = list(c(), colnames_avg)))
   
   for (i in 1:n_reps) {
     
@@ -391,6 +391,8 @@ do_simulation_bart <- function(data, i_train, i_test,
                                              delta_true = true_leaf_means$delta_true,
                                              delta_catch = as.numeric(tree_delta_catch))
       saveRDS(tree_subgroups_list_bb_i, file_name_tree_subgroup_bb)
+      rm(data_post, true_leaf_df, sim_leaf_df, sim_leaf_means_df, sim_leaf_means_df)
+      gc()
       
       ## LSEM Truth / BART Fit ----
       clever_cov_lb <- get_clever_cov(data_train_sim_lsem, data, formula_m_bart,
@@ -548,26 +550,29 @@ do_simulation_bart <- function(data, i_train, i_test,
       saveRDS(avg_df_lb_i, file_name_avg_lb)
     }
     
-    # Save replications into a data frame
-    indv_df_bb[1:nrow(data_test) + nrow(data_test) * (i-1),] <- indv_df_bb_i
-    subgroup_df_bb[1:5 + 5 * (i-1),] <- subgroup_df_bb_i
-    avg_df_bb[i,] <- avg_df_bb_i
-    tree_subgroups_list_bb[[i]] <- tree_subgroups_list_bb_i
-    
-    indv_df_lb[1:nrow(data_test) + nrow(data_test) * (i-1),] <- indv_df_lb_i
-    subgroup_df_lb[1:5 + 5 * (i-1),] <- subgroup_df_lb_i
-    avg_df_lb[i,] <- avg_df_lb_i
+    # # Save replications into a data frame
+    # indv_df_bb[1:nrow(data_test) + nrow(data_test) * (i-1),] <- indv_df_bb_i
+    # subgroup_df_bb[1:5 + 5 * (i-1),] <- subgroup_df_bb_i
+    # avg_df_bb[i,] <- avg_df_bb_i
+    # tree_subgroups_list_bb[[i]] <- tree_subgroups_list_bb_i
+    # 
+    # indv_df_lb[1:nrow(data_test) + nrow(data_test) * (i-1),] <- indv_df_lb_i
+    # subgroup_df_lb[1:5 + 5 * (i-1),] <- subgroup_df_lb_i
+    # avg_df_lb[i,] <- avg_df_lb_i
+    rm(indv_df_bb_i, subgroup_df_bb_i, avg_df_bb_i, tree_subgroups_list_bb_i,
+       indv_df_lb_i, subgroup_df_lb_i, avg_df_lb_i)
+    gc()
   }
   
-  tree_subgroups_df_bb <- do.call(rbind, tree_subgroups_list_bb)
+  # tree_subgroups_df_bb <- do.call(rbind, tree_subgroups_list_bb)
   
-  return(list(
-    individual_bart_bart = indv_df_bb,
-    subgroups_bart_bart = subgroup_df_bb,
-    average_bart_bart = avg_df_bb,
-    tree_subgroups_bart_bart = tree_subgroups_df_bb,
-    individual_lsem_bart = indv_df_lb,
-    subgroups_lsem_bart = subgroup_df_lb,
-    average_lsem_bart = avg_df_lb
-  ))
+  # return(list(
+  #   individual_bart_bart = indv_df_bb,
+  #   subgroups_bart_bart = subgroup_df_bb,
+  #   average_bart_bart = avg_df_bb,
+  #   tree_subgroups_bart_bart = tree_subgroups_df_bb,
+  #   individual_lsem_bart = indv_df_lb,
+  #   subgroups_lsem_bart = subgroup_df_lb,
+  #   average_lsem_bart = avg_df_lb
+  # ))
 }

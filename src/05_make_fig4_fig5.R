@@ -138,7 +138,7 @@ plot_coefs <- rbind(cbind(sex_df, id = 1), cbind(region_df, id = 2),
                        cbind(seatbelt_df, id = 5))
 ggplot(plot_coefs, aes(y = factor(category, level = level_order), x = coefs, fill = as.factor(id))) +
   stat_halfeye(show.legend = FALSE, alpha = 0.6) + 
-  scale_fill_brewer(palette =  'Set3') +
+  scale_fill_brewer(palette = 'Set3') +
   xlab('Coefficients') + ylab('Category') + theme_classic() + xlim(-0.07, 0.07) +
   theme(text = element_text(family = "Times New Roman")) + scale_colour_identity() +
   geom_hline(yintercept = c(6.5, 11.5, 15.6, 19.7), lty = 2, col = 'darkgray', size = 0.4)

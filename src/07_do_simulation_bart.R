@@ -22,7 +22,6 @@ formula_y_bart <- logY ~ -1 + age + bmi + edu + income + povlev + region + sex +
 formula_ps_bart <- smoke ~ age + bmi + edu + income + povlev + region + sex + marital + race + seatbelt
 
 out_bart <- readRDS('data/out_bart.rds')
-
 mu_y_hat_bart    <- colMeans(out_bart$mu_y_samples)
 zeta_hat_bart    <- colMeans(out_bart$zeta_samples)
 d_hat_bart       <- colMeans(out_bart$d_samples)
