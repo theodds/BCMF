@@ -1,0 +1,86 @@
+---
+title: "LSEM Individual"
+author: "Antonio R. Linero"
+date: '2022-10-06'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+Load the data:
+
+```{r}
+library(tidyverse)
+
+meps <- read_csv("../Data/meps2011.csv") %>% 
+  filter(totexp > 0 & bmi > 0) %>% 
+  mutate(logY = log(totexp)) %>% 
+  mutate(smoke = ifelse(smoke == "No", 0, 1)) %>% 
+  select(-totexp) %>% select(logY, everything())
+
+phealth <- meps$phealth
+phealth <- case_when(phealth == "Poor" ~ 1, phealth == "Fair" ~ 2, 
+                     phealth == "Good" ~ 3, phealth == "Very Good" ~ 4, 
+                     phealth == "Excellent" ~ 5)
+meps$phealth <- phealth
+rm(phealth)
+```
+
+Then fit (say) the model for `phealth`
+
+```{r}
+fit_m <- lm(phealth ~ smoke * (bmi + edu + log(income + 1000) + region + sex + 
+                                 marital + race + seatbelt), 
+            data = meps)
+```
+
+This model is of the form
+
+$$
+  M_i = \beta_0 + X_i^\top \beta + A_i (\gamma_0 + X_i^\top \gamma) + \text{error}_i
+$$
+
+So $\tau(x) = \gamma_0 + X_i^\top \gamma$. We can extract these coefficients as the interaction terms of the model:
+
+```{r}
+gamma <- coef(fit_m)[str_detect(names(coef(fit_m)), "smoke")]
+print(gamma)
+```
+
+We can then extract the design matrix using `model.matrix()`:
+
+```{r}
+X_tau <- model.matrix(phealth ~ bmi + edu + log(income + 1000) + region + sex + 
+                        marital + race + seatbelt, data = meps)
+head(X_tau)
+```
+
+So we can get $\tau(X_i)$ estimates for each individual in the sample as:
+
+```{r}
+tau_hat <- as.numeric(X_tau %*% gamma)
+hist(tau_hat)
+```
+
+Comparing this with the estimates from BCMF:
+
+```{r}
+fitted_meps <- readRDS("../Data/meps_fit.rds")
+```
+
+It turns out that the linear model behaves strangely for pacific islanders, probably because there aren't many pacific islanders in the sample:
+
+```{r}
+hist(colMeans(fitted_meps$tau_m_train))
+
+data_for_plot <- data.frame(tau_lsem = tau_hat, 
+                            tau_bcmf = colMeans(fitted_meps$tau_m_train), 
+                            is_islander = X_tau[,"racePacificIslander"])
+
+ggplot(data_for_plot, aes(x = tau_bcmf, y = tau_lsem, 
+                          color = factor(is_islander))) + 
+  geom_point() + 
+  geom_abline(slope = 1, intercept = 0, size = 3) 
+```
+
+Anyway, you can do all this to get LSEM-specific estimates of $d(x)$ and $\zeta(x)$ as well from the outcome model. You just extract a different set of coefficients and use the same design matrix that I got above.
